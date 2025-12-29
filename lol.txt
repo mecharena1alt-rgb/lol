@@ -8,10 +8,12 @@ local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 
 --------------------------------------------------
--- SETTINGS / STATE
+-- STATE
 --------------------------------------------------
 local aimbotEnabled = false
 local xrayEnabled = false
+local wallbangEnabled = false
+local invisibleEnabled = false
 
 local enemyList = {}
 local currentIndex = 1
@@ -31,7 +33,6 @@ UserInputService.InputBegan:Connect(function(input, gp)
         end
 
     elseif input.KeyCode == Enum.KeyCode.X then
-        -- Switch target
         if #enemyList > 0 then
             currentIndex += 1
             if currentIndex > #enemyList then
@@ -41,6 +42,12 @@ UserInputService.InputBegan:Connect(function(input, gp)
 
     elseif input.KeyCode == Enum.KeyCode.H then
         xrayEnabled = not xrayEnabled
+
+    elseif input.KeyCode == Enum.KeyCode.N then
+        wallbangEnabled = not wallbangEnabled
+
+    elseif input.KeyCode == Enum.KeyCode.J then
+        invisibleEnabled = not invisibleEnabled
     end
 end)
 
@@ -78,8 +85,7 @@ end
 -- XRAY
 --------------------------------------------------
 local function createHighlight(player)
-    if highlights[player] then return end
-    if not player.Character then return end
+    if highlights[player] or not player.Character then return end
 
     local highlight = Instance.new("Highlight")
     highlight.Name = "XRayHighlight"
@@ -89,8 +95,6 @@ local function createHighlight(player)
     highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
     highlight.FillColor = Color3.fromRGB(255, 0, 0)
     highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-
-    -- Parent to Camera so it's LOCAL and always visible
     highlight.Parent = Camera
 
     highlights[player] = highlight
@@ -104,27 +108,63 @@ local function removeHighlight(player)
 end
 
 --------------------------------------------------
--- CHARACTER RESPAWN HANDLING
+-- WALLBANG RAYCAST
 --------------------------------------------------
-local function onCharacterAdded(player)
-    task.wait(0.1)
-    if xrayEnabled and isEnemy(player) then
-        createHighlight(player)
+local function wallbangRaycast(origin, direction, ignoreList)
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Blacklist
+    params.IgnoreWater = true
+
+    ignoreList = ignoreList or {}
+
+    if wallbangEnabled then
+        table.insert(ignoreList, workspace)
+    end
+
+    if LocalPlayer.Character then
+        table.insert(ignoreList, LocalPlayer.Character)
+    end
+
+    params.FilterDescendantsInstances = ignoreList
+    return workspace:Raycast(origin, direction, params)
+end
+
+--------------------------------------------------
+-- LOCAL INVISIBILITY
+--------------------------------------------------
+local function setCharacterInvisible(character, invisible)
+    for _, obj in ipairs(character:GetDescendants()) do
+        if obj:IsA("BasePart") then
+            obj.LocalTransparencyModifier = invisible and 1 or 0
+        elseif obj:IsA("Decal") then
+            obj.Transparency = invisible and 1 or 0
+        end
     end
 end
 
-for _, player in ipairs(Players:GetPlayers()) do
-    player.CharacterAdded:Connect(function()
-        onCharacterAdded(player)
-    end)
+local function applyInvisibility()
+    if LocalPlayer.Character then
+        setCharacterInvisible(LocalPlayer.Character, invisibleEnabled)
+    end
 end
 
-Players.PlayerAdded:Connect(function(player)
-    player.CharacterAdded:Connect(function()
-        onCharacterAdded(player)
-    end)
-end)
+--------------------------------------------------
+-- CHARACTER RESPAWN
+--------------------------------------------------
+local function onCharacterAdded(character)
+    task.wait(0.1)
+    applyInvisibility()
+end
 
+if LocalPlayer.Character then
+    onCharacterAdded(LocalPlayer.Character)
+end
+
+LocalPlayer.CharacterAdded:Connect(onCharacterAdded)
+
+--------------------------------------------------
+-- CLEANUP
+--------------------------------------------------
 Players.PlayerRemoving:Connect(function(player)
     removeHighlight(player)
 end)
@@ -135,7 +175,7 @@ end)
 RunService.RenderStepped:Connect(function()
     updateEnemyList()
 
-    -- XRAY UPDATE
+    -- XRAY
     if xrayEnabled then
         for _, player in ipairs(Players:GetPlayers()) do
             if isEnemy(player) and isAlive(player) then
@@ -150,6 +190,9 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
+    -- INVISIBILITY (kept applied)
+    applyInvisibility()
+
     -- AIMBOT
     if not aimbotEnabled then return end
 
@@ -158,7 +201,15 @@ RunService.RenderStepped:Connect(function()
         and target.Character
         and target.Character:FindFirstChild("Head") then
 
-        local headPos = target.Character.Head.Position
-        Camera.CFrame = CFrame.new(Camera.CFrame.Position, headPos)
+        Camera.CFrame = CFrame.new(
+            Camera.CFrame.Position,
+            target.Character.Head.Position
+        )
     end
 end)
+
+--------------------------------------------------
+-- EXPORT (optional)
+--------------------------------------------------
+-- wallbangRaycast(origin, direction) can be used
+-- inside your gun script for wall penetration
