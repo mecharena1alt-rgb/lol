@@ -1,0 +1,164 @@
+--// Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Camera = workspace.CurrentCamera
+
+--// Player
+local LocalPlayer = Players.LocalPlayer
+
+--------------------------------------------------
+-- SETTINGS / STATE
+--------------------------------------------------
+local aimbotEnabled = false
+local xrayEnabled = false
+
+local enemyList = {}
+local currentIndex = 1
+local highlights = {}
+
+--------------------------------------------------
+-- INPUT
+--------------------------------------------------
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+
+    if input.KeyCode == Enum.KeyCode.G then
+        aimbotEnabled = not aimbotEnabled
+        if not aimbotEnabled then
+            enemyList = {}
+            currentIndex = 1
+        end
+
+    elseif input.KeyCode == Enum.KeyCode.X then
+        -- Switch target
+        if #enemyList > 0 then
+            currentIndex += 1
+            if currentIndex > #enemyList then
+                currentIndex = 1
+            end
+        end
+
+    elseif input.KeyCode == Enum.KeyCode.H then
+        xrayEnabled = not xrayEnabled
+    end
+end)
+
+--------------------------------------------------
+-- UTILS
+--------------------------------------------------
+local function isAlive(player)
+    if not player.Character then return false end
+    local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+    return humanoid and humanoid.Health > 0
+end
+
+local function isEnemy(player)
+    return player ~= LocalPlayer and player.Team ~= LocalPlayer.Team
+end
+
+local function updateEnemyList()
+    table.clear(enemyList)
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if isEnemy(player)
+            and isAlive(player)
+            and player.Character
+            and player.Character:FindFirstChild("Head") then
+            table.insert(enemyList, player)
+        end
+    end
+
+    if currentIndex > #enemyList then
+        currentIndex = 1
+    end
+end
+
+--------------------------------------------------
+-- XRAY
+--------------------------------------------------
+local function createHighlight(player)
+    if highlights[player] then return end
+    if not player.Character then return end
+
+    local highlight = Instance.new("Highlight")
+    highlight.Name = "XRayHighlight"
+    highlight.Adornee = player.Character
+    highlight.FillTransparency = 0.5
+    highlight.OutlineTransparency = 0
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    highlight.FillColor = Color3.fromRGB(255, 0, 0)
+    highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+
+    -- Parent to Camera so it's LOCAL and always visible
+    highlight.Parent = Camera
+
+    highlights[player] = highlight
+end
+
+local function removeHighlight(player)
+    if highlights[player] then
+        highlights[player]:Destroy()
+        highlights[player] = nil
+    end
+end
+
+--------------------------------------------------
+-- CHARACTER RESPAWN HANDLING
+--------------------------------------------------
+local function onCharacterAdded(player)
+    task.wait(0.1)
+    if xrayEnabled and isEnemy(player) then
+        createHighlight(player)
+    end
+end
+
+for _, player in ipairs(Players:GetPlayers()) do
+    player.CharacterAdded:Connect(function()
+        onCharacterAdded(player)
+    end)
+end
+
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function()
+        onCharacterAdded(player)
+    end)
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    removeHighlight(player)
+end)
+
+--------------------------------------------------
+-- MAIN LOOP
+--------------------------------------------------
+RunService.RenderStepped:Connect(function()
+    updateEnemyList()
+
+    -- XRAY UPDATE
+    if xrayEnabled then
+        for _, player in ipairs(Players:GetPlayers()) do
+            if isEnemy(player) and isAlive(player) then
+                createHighlight(player)
+            else
+                removeHighlight(player)
+            end
+        end
+    else
+        for player in pairs(highlights) do
+            removeHighlight(player)
+        end
+    end
+
+    -- AIMBOT
+    if not aimbotEnabled then return end
+
+    local target = enemyList[currentIndex]
+    if target
+        and target.Character
+        and target.Character:FindFirstChild("Head") then
+
+        local headPos = target.Character.Head.Position
+        Camera.CFrame = CFrame.new(Camera.CFrame.Position, headPos)
+    end
+end)
