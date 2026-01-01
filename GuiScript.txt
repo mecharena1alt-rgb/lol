@@ -1,0 +1,228 @@
+--// UI SCRIPT (VISUAL + SINGLE SOURCE OF TRUTH)
+--// LocalScript
+
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+
+--------------------------------------------------
+-- SCREEN GUI
+--------------------------------------------------
+local gui = Instance.new("ScreenGui")
+gui.Name = "MenuUI"
+gui.ResetOnSpawn = false
+gui.Parent = player:WaitForChild("PlayerGui")
+
+--------------------------------------------------
+-- DEFAULT STATE (ONLY USED TO INITIALIZE ATTRIBUTES)
+--------------------------------------------------
+local DEFAULT_ENABLED = {
+	["X-rayBTN"] = true,
+	["INF jumpBTN"] = true,
+}
+
+local DEFAULT_STATS = {
+	["TEXTBOX1"] = 80,
+	["TEXTBOX2"] = 80,
+	["TEXTBOX3"] = 80,
+}
+
+-- small X visual offset
+local SMALLXOFFSET = Vector2.new(0, -29)
+
+--------------------------------------------------
+-- MAIN FRAME
+--------------------------------------------------
+local frame = Instance.new("Frame", gui)
+frame.Name = "frame"
+frame.Size = UDim2.new(0,400,0,400)
+frame.Position = UDim2.fromScale(0.5,0.5)
+frame.AnchorPoint = Vector2.new(0.5,0.5)
+frame.BackgroundColor3 = Color3.fromRGB(34,34,34)
+frame.BorderSizePixel = 0
+
+--------------------------------------------------
+-- SECOND FRAME
+--------------------------------------------------
+local frame2 = Instance.new("Frame", gui)
+frame2.Name = "frame2"
+frame2.Size = UDim2.new(0,50,0,50)
+frame2.Position = UDim2.fromScale(0.5,0.5)
+frame2.AnchorPoint = Vector2.new(0.5,0.5)
+frame2.BackgroundTransparency = 1
+frame2.Visible = false
+
+--------------------------------------------------
+-- HELPERS
+--------------------------------------------------
+local function makeButton(name, text, size, pos, parent, bg)
+	local b = Instance.new("TextButton")
+	b.Name = name
+	b.Size = size
+	b.Position = pos
+	b.Text = text
+	b.TextColor3 = Color3.fromRGB(255,255,255)
+	b.TextScaled = true
+	b.Font = Enum.Font.Gotham
+	b.BackgroundColor3 = bg
+	b.BorderSizePixel = 0
+	b.Parent = parent
+	return b
+end
+
+local function setToggle(btn, value)
+	btn:SetAttribute("Enabled", value)
+	btn.BackgroundColor3 = value
+		and Color3.fromRGB(17,17,17)
+		or Color3.fromRGB(34,34,34)
+end
+
+--------------------------------------------------
+-- LEFT BUTTONS
+--------------------------------------------------
+local buttons = {
+	{"AimbotBTN","Aimbot",0},
+	{"X-rayBTN","X-ray",0.125},
+	{"No clipBTN","No clip",0.25},
+	{"TP to playerBTN","TP to player",0.375},
+	{"INF jumpBTN","INF jump",0.5},
+	{"Jump heightBTN","Jump height",0.625},
+	{"SpeedBTN","Speed",0.75},
+	{"Fly speedBTN","Fly speed",0.875},
+}
+
+for _,info in ipairs(buttons) do
+	local btn = makeButton(
+		info[1],
+		info[2],
+		UDim2.new(0,200,0,50),
+		UDim2.new(0,0,info[3],0),
+		frame,
+		Color3.fromRGB(34,34,34)
+	)
+
+	-- initialize attribute
+	local default = DEFAULT_ENABLED[btn.Name] or false
+	setToggle(btn, default)
+
+	btn.MouseButton1Click:Connect(function()
+		setToggle(btn, not btn:GetAttribute("Enabled"))
+	end)
+end
+
+--------------------------------------------------
+-- BIG X BUTTON
+--------------------------------------------------
+local XBTN = makeButton(
+	"XBTN",
+	"X",
+	UDim2.new(0,200,0,250),
+	UDim2.new(0.5,0,0,0),
+	frame,
+	Color3.fromRGB(31,31,31)
+)
+XBTN.Font = Enum.Font.GothamBold
+
+XBTN.MouseButton1Click:Connect(function()
+	frame.Visible = false
+	frame2.Visible = true
+end)
+
+--------------------------------------------------
+-- TEXT BOXES (STATS)
+--------------------------------------------------
+local textboxes = {}
+
+local function makeTextBox(name, posY)
+	local tb = Instance.new("TextBox")
+	tb.Name = name
+	tb.Size = UDim2.new(0,100,0,50)
+	tb.Position = UDim2.new(0.5,0,posY,0)
+	tb.TextColor3 = Color3.fromRGB(255,255,255)
+	tb.TextScaled = true
+	tb.Font = Enum.Font.GothamBold
+	tb.BackgroundColor3 = Color3.fromRGB(25,25,25)
+	tb.BorderSizePixel = 0
+	tb.ClearTextOnFocus = false
+	tb.Parent = frame
+
+	local default = DEFAULT_STATS[name] or 0
+	tb:SetAttribute("Value", default)
+	tb.Text = tostring(default)
+
+	tb.FocusLost:Connect(function()
+		local num = tonumber(tb.Text)
+		if num then
+			tb:SetAttribute("Value", num)
+		end
+		tb.Text = tostring(tb:GetAttribute("Value"))
+	end)
+
+	textboxes[name] = tb
+end
+
+makeTextBox("TEXTBOX1", 0.625)
+makeTextBox("TEXTBOX2", 0.75)
+makeTextBox("TEXTBOX3", 0.875)
+
+--------------------------------------------------
+-- PLUS / MINUS BUTTONS
+--------------------------------------------------
+local function adjust(tbName, amount)
+	local tb = textboxes[tbName]
+	local value = (tb:GetAttribute("Value") or 0) + amount
+	tb:SetAttribute("Value", value)
+	tb.Text = tostring(value)
+end
+
+local pmButtons = {
+	{"+BTN1", "+", 0.875, 0.625, "TEXTBOX1", 1},
+	{"+BTN2", "+", 0.875, 0.75, "TEXTBOX2", 1},
+	{"+BTN3", "+", 0.875, 0.875, "TEXTBOX3", 1},
+	{"-BTN1", "-", 0.75, 0.625, "TEXTBOX1", -1},
+	{"-BTN2", "-", 0.75, 0.75, "TEXTBOX2", -1},
+	{"-BTN3", "-", 0.75, 0.875, "TEXTBOX3", -1},
+}
+
+for _,b in ipairs(pmButtons) do
+	local btn = makeButton(
+		b[1],
+		b[2],
+		UDim2.new(0,50,0,50),
+		UDim2.new(b[3],0,b[4],0),
+		frame,
+		Color3.fromRGB(190,190,190)
+	)
+	btn.TextColor3 = Color3.fromRGB(0,0,0)
+
+	btn.MouseButton1Click:Connect(function()
+		adjust(b[5], b[6])
+	end)
+end
+
+--------------------------------------------------
+-- SMALL X BUTTON
+--------------------------------------------------
+local smallxBTN = Instance.new("TextButton")
+smallxBTN.Name = "smallxBTN"
+smallxBTN.Size = UDim2.new(0,50,0,50)
+smallxBTN.AnchorPoint = Vector2.new(0.5,0.5)
+smallxBTN.Position = UDim2.new(0.5, SMALLXOFFSET.X, 0.5, SMALLXOFFSET.Y)
+smallxBTN.BackgroundTransparency = 1
+smallxBTN.Text = ""
+smallxBTN.AutoButtonColor = false
+smallxBTN.Parent = frame2
+
+local XLabel = Instance.new("TextLabel", smallxBTN)
+XLabel.Size = UDim2.new(1,0,1,0)
+XLabel.AnchorPoint = Vector2.new(0.5,0.5)
+XLabel.Position = UDim2.new(0.5,0,0.5,0)
+XLabel.BackgroundTransparency = 1
+XLabel.Text = "X"
+XLabel.TextColor3 = Color3.fromRGB(255,255,255)
+XLabel.Font = Enum.Font.GothamBold
+XLabel.TextSize = 14
+
+smallxBTN.MouseButton1Click:Connect(function()
+	frame.Visible = true
+	frame2.Visible = false
+end)

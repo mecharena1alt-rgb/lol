@@ -1,0 +1,244 @@
+--// LOGIC SCRIPT
+--// GUI is SINGLE SOURCE OF TRUTH
+
+--------------------------------------------------
+-- SERVICES
+--------------------------------------------------
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Camera = workspace.CurrentCamera
+
+local LocalPlayer = Players.LocalPlayer
+
+--------------------------------------------------
+-- GUI
+--------------------------------------------------
+local gui = LocalPlayer.PlayerGui:WaitForChild("MenuUI")
+local frame = gui:WaitForChild("frame")
+
+--------------------------------------------------
+-- GUI HELPERS
+--------------------------------------------------
+local function btn(name)
+	return frame:FindFirstChild(name)
+end
+
+local function box(name)
+	return frame:FindFirstChild(name)
+end
+
+local function enabled(name)
+	local b = btn(name)
+	return b and b:GetAttribute("Enabled") == true
+end
+
+local function setEnabled(name, v)
+	local b = btn(name)
+	if not b then return end
+	b:SetAttribute("Enabled", v)
+	b.BackgroundColor3 = v
+		and Color3.fromRGB(17,17,17)
+		or Color3.fromRGB(34,34,34)
+end
+
+local function toggle(name)
+	setEnabled(name, not enabled(name))
+end
+
+local function stat(name, fallback)
+	local b = box(name)
+	return b and b:GetAttribute("Value") or fallback
+end
+
+--------------------------------------------------
+-- HOTKEYS
+--------------------------------------------------
+local HOTKEYS = {
+	G = "AimbotBTN",
+	H = "X-rayBTN",
+	J = "SpeedBTN",
+	K = "Jump heightBTN",
+	L = "INF jumpBTN",
+	N = "No clipBTN",
+	F = "Fly speedBTN",
+}
+
+UserInputService.InputBegan:Connect(function(i, gp)
+	if gp then return end
+	local btnName = HOTKEYS[i.KeyCode.Name]
+	if btnName then
+		toggle(btnName)
+	end
+end)
+
+--------------------------------------------------
+-- CHARACTER
+--------------------------------------------------
+local character, humanoid, root
+local bodyVelocity, bodyGyro
+local savedCollision = {}
+local highlights = {}
+
+local function onCharacter(char)
+	character = char
+	humanoid = char:WaitForChild("Humanoid")
+	root = char:WaitForChild("HumanoidRootPart")
+	savedCollision = {}
+end
+
+if LocalPlayer.Character then
+	onCharacter(LocalPlayer.Character)
+end
+LocalPlayer.CharacterAdded:Connect(onCharacter)
+
+--------------------------------------------------
+-- NOCLIP
+--------------------------------------------------
+local function saveCollision()
+	savedCollision = {}
+	for _, p in ipairs(character:GetDescendants()) do
+		if p:IsA("BasePart") then
+			savedCollision[p] = {p.CanCollide, p.CanTouch, p.CanQuery}
+		end
+	end
+end
+
+local function restoreCollision()
+	for part, s in pairs(savedCollision) do
+		if part then
+			part.CanCollide, part.CanTouch, part.CanQuery = s[1], s[2], s[3]
+		end
+	end
+end
+
+--------------------------------------------------
+-- XRAY
+--------------------------------------------------
+local function updateXray(players)
+	if not enabled("X-rayBTN") then
+		for _, h in pairs(highlights) do h:Destroy() end
+		table.clear(highlights)
+		return
+	end
+
+	for _, p in ipairs(players) do
+		if not highlights[p] and p.Character then
+			local h = Instance.new("Highlight")
+			h.Adornee = p.Character
+			h.FillColor = Color3.fromRGB(255,0,0)
+			h.FillTransparency = 0.5
+			h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+			h.Parent = Camera
+			highlights[p] = h
+		end
+	end
+end
+
+--------------------------------------------------
+-- FLY (FIXED)
+--------------------------------------------------
+local function setFly(on)
+	if not humanoid or not root then return end
+
+	if not on then
+		if bodyVelocity then bodyVelocity:Destroy() end
+		if bodyGyro then bodyGyro:Destroy() end
+		bodyVelocity, bodyGyro = nil, nil
+		humanoid.PlatformStand = false
+		return
+	end
+
+	if bodyVelocity then return end
+
+	bodyVelocity = Instance.new("BodyVelocity")
+	bodyVelocity.MaxForce = Vector3.new(1e9,1e9,1e9)
+	bodyVelocity.Parent = root
+
+	bodyGyro = Instance.new("BodyGyro")
+	bodyGyro.MaxTorque = Vector3.new(1e9,1e9,1e9)
+	bodyGyro.Parent = root
+
+	humanoid.PlatformStand = true
+end
+
+--------------------------------------------------
+-- MAIN LOOP (SINGLE LOOP)
+--------------------------------------------------
+local tick = 0
+
+RunService.RenderStepped:Connect(function(dt)
+	if not humanoid then return end
+	tick += dt
+
+	--------------------------------------------------
+	-- SPEED / JUMP
+	--------------------------------------------------
+	humanoid.WalkSpeed = enabled("SpeedBTN") and stat("TEXTBOX2", 16) or 16
+	humanoid.JumpHeight = enabled("Jump heightBTN") and stat("TEXTBOX1", 7.2) or 7.2
+
+	--------------------------------------------------
+	-- INFINITE JUMP
+	--------------------------------------------------
+	if enabled("INF jumpBTN") and UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+		humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+	end
+
+	--------------------------------------------------
+	-- NOCLIP
+	--------------------------------------------------
+	if enabled("No clipBTN") then
+		if not next(savedCollision) then saveCollision() end
+		for _, p in ipairs(character:GetDescendants()) do
+			if p:IsA("BasePart") then
+				p.CanCollide = false
+				p.CanTouch = false
+				p.CanQuery = false
+			end
+		end
+	elseif next(savedCollision) then
+		restoreCollision()
+		table.clear(savedCollision)
+	end
+
+	--------------------------------------------------
+	-- FLY
+	--------------------------------------------------
+	setFly(enabled("Fly speedBTN"))
+
+	if bodyVelocity then
+		local cam = Camera.CFrame
+		local move = humanoid.MoveDirection
+		local dir =
+			cam.LookVector * move:Dot(cam.LookVector) +
+			cam.RightVector * move:Dot(cam.RightVector)
+
+		if dir.Magnitude > 0 then dir = dir.Unit end
+
+		bodyVelocity.Velocity = dir * stat("TEXTBOX3", 80)
+		bodyGyro.CFrame = cam
+	end
+
+	--------------------------------------------------
+	-- XRAY / AIMBOT (0.1s)
+	--------------------------------------------------
+	if tick >= 0.1 then
+		tick = 0
+
+		local enemies = {}
+		for _, p in ipairs(Players:GetPlayers()) do
+			if p ~= LocalPlayer and p.Team ~= LocalPlayer.Team then
+				table.insert(enemies, p)
+			end
+		end
+
+		updateXray(enemies)
+
+		if enabled("AimbotBTN") and enemies[1] and enemies[1].Character then
+			Camera.CFrame = CFrame.new(
+				Camera.CFrame.Position,
+				enemies[1].Character.Head.Position
+			)
+		end
+	end
+end)
