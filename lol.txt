@@ -8,208 +8,192 @@ local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 
 --------------------------------------------------
+-- CONFIG
+--------------------------------------------------
+local ENABLED = {
+	["Aimbot"] = false,
+	["X-ray"] = true,
+	["noclip"] = false,
+	["flying"] = false,
+}
+
+local SPEEDS = {
+	["FlyingSpeed"] = 80,
+	["WalkingSpeed"] = 80,
+	["JumpHight"] = 80,
+}
+
+--------------------------------------------------
 -- STATE
 --------------------------------------------------
-local aimbotEnabled = false
-local xrayEnabled = false
-local wallbangEnabled = false
-local invisibleEnabled = false
+local aimbotEnabled = ENABLED["Aimbot"]
+local xrayEnabled = ENABLED["X-ray"]
+local noclipEnabled = ENABLED["noclip"]
+local flyEnabled = ENABLED["flying"]
 
-local enemyList = {}
-local currentIndex = 1
 local highlights = {}
+local bodyVelocity, bodyGyro
 
 --------------------------------------------------
 -- INPUT
 --------------------------------------------------
 UserInputService.InputBegan:Connect(function(input, gp)
-    if gp then return end
+	if gp then return end
 
-    if input.KeyCode == Enum.KeyCode.G then
-        aimbotEnabled = not aimbotEnabled
-        if not aimbotEnabled then
-            enemyList = {}
-            currentIndex = 1
-        end
+	if input.KeyCode == Enum.KeyCode.G then
+		aimbotEnabled = not aimbotEnabled
 
-    elseif input.KeyCode == Enum.KeyCode.X then
-        if #enemyList > 0 then
-            currentIndex += 1
-            if currentIndex > #enemyList then
-                currentIndex = 1
-            end
-        end
+	elseif input.KeyCode == Enum.KeyCode.H then
+		xrayEnabled = not xrayEnabled
 
-    elseif input.KeyCode == Enum.KeyCode.H then
-        xrayEnabled = not xrayEnabled
+	elseif input.KeyCode == Enum.KeyCode.N then
+		noclipEnabled = not noclipEnabled
 
-    elseif input.KeyCode == Enum.KeyCode.N then
-        wallbangEnabled = not wallbangEnabled
-
-    elseif input.KeyCode == Enum.KeyCode.J then
-        invisibleEnabled = not invisibleEnabled
-    end
+	elseif input.KeyCode == Enum.KeyCode.F then
+		flyEnabled = not flyEnabled
+	end
 end)
 
 --------------------------------------------------
 -- UTILS
 --------------------------------------------------
 local function isAlive(player)
-    if not player.Character then return false end
-    local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
-    return humanoid and humanoid.Health > 0
+	local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	return hum and hum.Health > 0
 end
 
 local function isEnemy(player)
-    return player ~= LocalPlayer and player.Team ~= LocalPlayer.Team
+	return player ~= LocalPlayer and player.Team ~= LocalPlayer.Team
 end
 
-local function updateEnemyList()
-    table.clear(enemyList)
-
-    for _, player in ipairs(Players:GetPlayers()) do
-        if isEnemy(player)
-            and isAlive(player)
-            and player.Character
-            and player.Character:FindFirstChild("Head") then
-            table.insert(enemyList, player)
-        end
-    end
-
-    if currentIndex > #enemyList then
-        currentIndex = 1
-    end
+local function getNearestEnemyHead()
+	local closest, dist = nil, math.huge
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if isEnemy(plr) and isAlive(plr) then
+			local head = plr.Character and plr.Character:FindFirstChild("Head")
+			if head then
+				local d = (Camera.CFrame.Position - head.Position).Magnitude
+				if d < dist then
+					dist = d
+					closest = head
+				end
+			end
+		end
+	end
+	return closest
 end
 
 --------------------------------------------------
 -- XRAY
 --------------------------------------------------
 local function createHighlight(player)
-    if highlights[player] or not player.Character then return end
-
-    local highlight = Instance.new("Highlight")
-    highlight.Name = "XRayHighlight"
-    highlight.Adornee = player.Character
-    highlight.FillTransparency = 0.5
-    highlight.OutlineTransparency = 0
-    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-    highlight.FillColor = Color3.fromRGB(255, 0, 0)
-    highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-    highlight.Parent = Camera
-
-    highlights[player] = highlight
+	if highlights[player] or not player.Character then return end
+	local h = Instance.new("Highlight")
+	h.Adornee = player.Character
+	h.FillTransparency = 0.5
+	h.OutlineTransparency = 0
+	h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	h.FillColor = Color3.fromRGB(255,0,0)
+	h.Parent = Camera
+	highlights[player] = h
 end
 
 local function removeHighlight(player)
-    if highlights[player] then
-        highlights[player]:Destroy()
-        highlights[player] = nil
-    end
+	if highlights[player] then
+		highlights[player]:Destroy()
+		highlights[player] = nil
+	end
 end
 
 --------------------------------------------------
--- WALLBANG RAYCAST
+-- NOCLIP
 --------------------------------------------------
-local function wallbangRaycast(origin, direction, ignoreList)
-    local params = RaycastParams.new()
-    params.FilterType = Enum.RaycastFilterType.Blacklist
-    params.IgnoreWater = true
-
-    ignoreList = ignoreList or {}
-
-    if wallbangEnabled then
-        table.insert(ignoreList, workspace)
-    end
-
-    if LocalPlayer.Character then
-        table.insert(ignoreList, LocalPlayer.Character)
-    end
-
-    params.FilterDescendantsInstances = ignoreList
-    return workspace:Raycast(origin, direction, params)
+local function applyNoclip()
+	local char = LocalPlayer.Character
+	if not char then return end
+	for _, v in ipairs(char:GetDescendants()) do
+		if v:IsA("BasePart") then
+			v.CanCollide = not noclipEnabled
+		end
+	end
 end
 
 --------------------------------------------------
--- LOCAL INVISIBILITY
+-- FLY
 --------------------------------------------------
-local function setCharacterInvisible(character, invisible)
-    for _, obj in ipairs(character:GetDescendants()) do
-        if obj:IsA("BasePart") then
-            obj.LocalTransparencyModifier = invisible and 1 or 0
-        elseif obj:IsA("Decal") then
-            obj.Transparency = invisible and 1 or 0
-        end
-    end
+local function enableFly(enable)
+	local char = LocalPlayer.Character
+	if not char then return end
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if not hrp or not hum then return end
+
+	if not enable then
+		if bodyVelocity then bodyVelocity:Destroy() end
+		if bodyGyro then bodyGyro:Destroy() end
+		bodyVelocity, bodyGyro = nil, nil
+		hum.PlatformStand = false
+		return
+	end
+
+	bodyVelocity = Instance.new("BodyVelocity")
+	bodyVelocity.MaxForce = Vector3.new(1e9,1e9,1e9)
+	bodyVelocity.Parent = hrp
+
+	bodyGyro = Instance.new("BodyGyro")
+	bodyGyro.MaxTorque = Vector3.new(1e9,1e9,1e9)
+	bodyGyro.Parent = hrp
+
+	hum.PlatformStand = true
 end
-
-local function applyInvisibility()
-    if LocalPlayer.Character then
-        setCharacterInvisible(LocalPlayer.Character, invisibleEnabled)
-    end
-end
-
---------------------------------------------------
--- CHARACTER RESPAWN
---------------------------------------------------
-local function onCharacterAdded(character)
-    task.wait(0.1)
-    applyInvisibility()
-end
-
-if LocalPlayer.Character then
-    onCharacterAdded(LocalPlayer.Character)
-end
-
-LocalPlayer.CharacterAdded:Connect(onCharacterAdded)
-
---------------------------------------------------
--- CLEANUP
---------------------------------------------------
-Players.PlayerRemoving:Connect(function(player)
-    removeHighlight(player)
-end)
 
 --------------------------------------------------
 -- MAIN LOOP
 --------------------------------------------------
 RunService.RenderStepped:Connect(function()
-    updateEnemyList()
+	-- XRAY
+	if xrayEnabled then
+		for _, plr in ipairs(Players:GetPlayers()) do
+			if isEnemy(plr) and isAlive(plr) then
+				createHighlight(plr)
+			else
+				removeHighlight(plr)
+			end
+		end
+	else
+		for plr in pairs(highlights) do
+			removeHighlight(plr)
+		end
+	end
 
-    -- XRAY
-    if xrayEnabled then
-        for _, player in ipairs(Players:GetPlayers()) do
-            if isEnemy(player) and isAlive(player) then
-                createHighlight(player)
-            else
-                removeHighlight(player)
-            end
-        end
-    else
-        for player in pairs(highlights) do
-            removeHighlight(player)
-        end
-    end
+	-- NOCLIP
+	applyNoclip()
 
-    -- INVISIBILITY (kept applied)
-    applyInvisibility()
+	-- AIMBOT
+	if aimbotEnabled then
+		local head = getNearestEnemyHead()
+		if head then
+			Camera.CFrame = CFrame.new(Camera.CFrame.Position, head.Position)
+		end
+	end
 
-    -- AIMBOT
-    if not aimbotEnabled then return end
-
-    local target = enemyList[currentIndex]
-    if target
-        and target.Character
-        and target.Character:FindFirstChild("Head") then
-
-        Camera.CFrame = CFrame.new(
-            Camera.CFrame.Position,
-            target.Character.Head.Position
-        )
-    end
+	-- FLY MOVEMENT
+	if flyEnabled then
+		if not bodyVelocity then enableFly(true) end
+		local cam = Camera
+		local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+		if cam and hum and bodyVelocity and bodyGyro then
+			bodyVelocity.Velocity =
+				(cam.CFrame.LookVector * hum.MoveDirection.Z +
+				cam.CFrame.RightVector * hum.MoveDirection.X) * SPEEDS.FlyingSpeed
+			bodyGyro.CFrame = cam.CFrame
+		end
+	else
+		if bodyVelocity or bodyGyro then enableFly(false) end
+	end
 end)
 
 --------------------------------------------------
--- EXPORT (optional)
+-- CLEANUP
 --------------------------------------------------
--- wallbangRaycast(origin, direction) can be used
--- inside your gun script for wall penetration
+Players.PlayerRemoving:Connect(removeHighlight)
