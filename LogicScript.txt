@@ -1,9 +1,4 @@
---// LOGIC SCRIPT
---// GUI is SINGLE SOURCE OF TRUTH
-
---------------------------------------------------
--- SERVICES
---------------------------------------------------
+--// SERVICES
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -12,7 +7,7 @@ local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 
 --------------------------------------------------
--- GUI
+-- GUI (SINGLE SOURCE OF TRUTH)
 --------------------------------------------------
 local gui = LocalPlayer.PlayerGui:WaitForChild("MenuUI")
 local frame = gui:WaitForChild("frame")
@@ -20,115 +15,143 @@ local frame = gui:WaitForChild("frame")
 --------------------------------------------------
 -- GUI HELPERS
 --------------------------------------------------
-local function btn(name)
+local function BTN(name)
 	return frame:FindFirstChild(name)
 end
 
-local function box(name)
-	return frame:FindFirstChild(name)
-end
-
-local function enabled(name)
-	local b = btn(name)
+local function ENABLED(name)
+	local b = BTN(name)
 	return b and b:GetAttribute("Enabled") == true
 end
 
-local function setEnabled(name, v)
-	local b = btn(name)
-	if not b then return end
-	b:SetAttribute("Enabled", v)
-	b.BackgroundColor3 = v
-		and Color3.fromRGB(17,17,17)
-		or Color3.fromRGB(34,34,34)
+local function TOGGLE(name)
+	local b = BTN(name)
+	if b then
+		b:SetAttribute("Enabled", not ENABLED(name))
+	end
 end
 
-local function toggle(name)
-	setEnabled(name, not enabled(name))
+local function TEXTBOX(name)
+	return frame:WaitForChild(name)
 end
 
-local function stat(name, fallback)
-	local b = box(name)
-	return b and b:GetAttribute("Value") or fallback
+
+local function VALUE(name, fallback)
+	local tb = TEXTBOX(name)
+	if tb then
+		return tb:GetAttribute("Value") or fallback
+	end
+	return fallback
+end
+
+--------------------------------------------------
+-- VISUAL SYNC
+--------------------------------------------------
+local ENABLED_COLOR  = Color3.fromRGB(17,17,17)
+local DISABLED_COLOR = Color3.fromRGB(34,34,34)
+
+for _, obj in ipairs(frame:GetChildren()) do
+	if obj:IsA("TextButton") then
+		local function sync()
+			obj.BackgroundColor3 =
+				(obj:GetAttribute("Enabled") == true)
+				and ENABLED_COLOR or DISABLED_COLOR
+		end
+		sync()
+		obj:GetAttributeChangedSignal("Enabled"):Connect(sync)
+	end
 end
 
 --------------------------------------------------
 -- HOTKEYS
 --------------------------------------------------
-local HOTKEYS = {
-	G = "AimbotBTN",
-	H = "X-rayBTN",
-	J = "SpeedBTN",
-	K = "Jump heightBTN",
-	L = "INF jumpBTN",
-	N = "No clipBTN",
-	F = "Fly speedBTN",
-}
-
-UserInputService.InputBegan:Connect(function(i, gp)
+UserInputService.InputBegan:Connect(function(input, gp)
 	if gp then return end
-	local btnName = HOTKEYS[i.KeyCode.Name]
-	if btnName then
-		toggle(btnName)
+
+	if input.KeyCode == Enum.KeyCode.G then TOGGLE("AimbotBTN")
+	elseif input.KeyCode == Enum.KeyCode.H then TOGGLE("X-rayBTN")
+	elseif input.KeyCode == Enum.KeyCode.N then TOGGLE("No clipBTN")
+	elseif input.KeyCode == Enum.KeyCode.F then TOGGLE("Fly speedBTN")
+	elseif input.KeyCode == Enum.KeyCode.J then TOGGLE("SpeedBTN")
+	elseif input.KeyCode == Enum.KeyCode.K then TOGGLE("Jump heightBTN")
+	elseif input.KeyCode == Enum.KeyCode.L then TOGGLE("INF jumpBTN")
+	elseif input.KeyCode == Enum.KeyCode.Y then TOGGLE("TP to playerBTN")
 	end
 end)
 
 --------------------------------------------------
--- CHARACTER
+-- STATE
 --------------------------------------------------
-local character, humanoid, root
-local bodyVelocity, bodyGyro
-local savedCollision = {}
+local enemyList = {}
+local currentIndex = 1
+local tickTimer = 0
+
 local highlights = {}
-
-local function onCharacter(char)
-	character = char
-	humanoid = char:WaitForChild("Humanoid")
-	root = char:WaitForChild("HumanoidRootPart")
-	savedCollision = {}
-end
-
-if LocalPlayer.Character then
-	onCharacter(LocalPlayer.Character)
-end
-LocalPlayer.CharacterAdded:Connect(onCharacter)
+local bodyVelocity, bodyGyro
+local defaults = {}
 
 --------------------------------------------------
--- NOCLIP
+-- CHARACTER HELPERS
 --------------------------------------------------
-local function saveCollision()
-	savedCollision = {}
-	for _, p in ipairs(character:GetDescendants()) do
-		if p:IsA("BasePart") then
-			savedCollision[p] = {p.CanCollide, p.CanTouch, p.CanQuery}
+local function CHAR()
+	return LocalPlayer.Character
+end
+
+local function HUM()
+	return CHAR() and CHAR():FindFirstChildOfClass("Humanoid")
+end
+
+local function HRP()
+	return CHAR() and CHAR():FindFirstChild("HumanoidRootPart")
+end
+
+--------------------------------------------------
+-- ENEMY SCAN
+--------------------------------------------------
+local function updateEnemies()
+	table.clear(enemyList)
+
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= LocalPlayer
+			and p.Character
+			and p.Character:FindFirstChild("Head") then
+
+			local h = p.Character:FindFirstChildOfClass("Humanoid")
+			if h and h.Health > 0 then
+				table.insert(enemyList, p)
+			end
 		end
 	end
-end
 
-local function restoreCollision()
-	for part, s in pairs(savedCollision) do
-		if part then
-			part.CanCollide, part.CanTouch, part.CanQuery = s[1], s[2], s[3]
-		end
+	table.sort(enemyList, function(a, b)
+		return
+			(Camera.CFrame.Position - a.Character.Head.Position).Magnitude <
+			(Camera.CFrame.Position - b.Character.Head.Position).Magnitude
+	end)
+
+	if currentIndex > #enemyList then
+		currentIndex = 1
 	end
 end
 
 --------------------------------------------------
 -- XRAY
 --------------------------------------------------
-local function updateXray(players)
-	if not enabled("X-rayBTN") then
+local function applyXray()
+	if not ENABLED("X-rayBTN") then
 		for _, h in pairs(highlights) do h:Destroy() end
 		table.clear(highlights)
 		return
 	end
 
-	for _, p in ipairs(players) do
-		if not highlights[p] and p.Character then
+	for _, p in ipairs(enemyList) do
+		if not highlights[p] then
 			local h = Instance.new("Highlight")
 			h.Adornee = p.Character
-			h.FillColor = Color3.fromRGB(255,0,0)
 			h.FillTransparency = 0.5
+			h.OutlineTransparency = 0
 			h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+			h.FillColor = Color3.fromRGB(255,0,0)
 			h.Parent = Camera
 			highlights[p] = h
 		end
@@ -136,109 +159,181 @@ local function updateXray(players)
 end
 
 --------------------------------------------------
--- FLY (FIXED)
+-- TRUE NOCLIP
 --------------------------------------------------
-local function setFly(on)
-	if not humanoid or not root then return end
+local function applyNoclip()
+	if not ENABLED("No clipBTN") then return end
+	local char = CHAR()
+	if not char then return end
 
-	if not on then
-		if bodyVelocity then bodyVelocity:Destroy() end
-		if bodyGyro then bodyGyro:Destroy() end
-		bodyVelocity, bodyGyro = nil, nil
-		humanoid.PlatformStand = false
-		return
+	for _, part in ipairs(char:GetDescendants()) do
+		if part:IsA("BasePart") then
+			part.CanCollide = false
+			part.CanTouch = false
+			part.CanQuery = false
+		end
 	end
-
-	if bodyVelocity then return end
-
-	bodyVelocity = Instance.new("BodyVelocity")
-	bodyVelocity.MaxForce = Vector3.new(1e9,1e9,1e9)
-	bodyVelocity.Parent = root
-
-	bodyGyro = Instance.new("BodyGyro")
-	bodyGyro.MaxTorque = Vector3.new(1e9,1e9,1e9)
-	bodyGyro.Parent = root
-
-	humanoid.PlatformStand = true
 end
 
 --------------------------------------------------
--- MAIN LOOP (SINGLE LOOP)
+-- FLY (TEXTBOX3)
 --------------------------------------------------
-local tick = 0
+local function updateFly()
+	if not ENABLED("Fly speedBTN") then
+		if bodyVelocity then bodyVelocity:Destroy() bodyVelocity = nil end
+		if bodyGyro then bodyGyro:Destroy() bodyGyro = nil end
 
+		local hum = HUM()
+		if hum then
+			hum.PlatformStand = false
+		end
+		return
+	end
+
+	local hrp = HRP()
+	local hum = HUM()
+	if not hrp or not hum then return end
+
+	-- prevent humanoid physics fighting fly
+	hum.PlatformStand = true
+
+	if not bodyVelocity then
+		bodyVelocity = Instance.new("BodyVelocity")
+		bodyVelocity.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+		bodyVelocity.Velocity = Vector3.zero
+		bodyVelocity.Parent = hrp
+
+		bodyGyro = Instance.new("BodyGyro")
+		bodyGyro.MaxTorque = Vector3.new(1e9, 1e9, 1e9)
+		bodyGyro.P = 1e5
+		bodyGyro.Parent = hrp
+	end
+
+	local camCF = Camera.CFrame
+	local move = Vector3.zero
+	local flySpeed = VALUE("TEXTBOX3", 80)
+
+	-- WASD (camera-relative)
+	if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+		move += camCF.LookVector
+	end
+	if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+		move -= camCF.LookVector
+	end
+	if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+		move -= camCF.RightVector
+	end
+	if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+		move += camCF.RightVector
+	end
+
+	-- vertical
+	if UserInputService:IsKeyDown(Enum.KeyCode.E) then
+		move += camCF.UpVector
+	end
+	if UserInputService:IsKeyDown(Enum.KeyCode.Q) then
+		move -= camCF.UpVector
+	end
+
+	if move.Magnitude > 0 then
+		move = move.Unit * flySpeed
+	end
+
+	bodyVelocity.Velocity = move
+	bodyGyro.CFrame = camCF
+end
+
+
+--------------------------------------------------
+-- MOVEMENT (TEXTBOX1 / TEXTBOX2)
+--------------------------------------------------
+local function applyMovement()
+	local hum = HUM()
+	if not hum then return end
+
+	if ENABLED("SpeedBTN") then
+		hum.WalkSpeed = VALUE("TEXTBOX2", defaults.WalkSpeed)
+	else
+		hum.WalkSpeed = defaults.WalkSpeed
+	end
+
+	if ENABLED("Jump heightBTN") then
+		hum.UseJumpPower = false
+		hum.JumpHeight = VALUE("TEXTBOX1", defaults.JumpHeight)
+	else
+		hum.JumpHeight = defaults.JumpHeight
+	end
+end
+
+
+--------------------------------------------------
+-- INFINITE JUMP
+--------------------------------------------------
+UserInputService.JumpRequest:Connect(function()
+	if ENABLED("INF jumpBTN") then
+		local hum = HUM()
+		if hum then
+			hum:ChangeState(Enum.HumanoidStateType.Jumping)
+		end
+	end
+end)
+
+--------------------------------------------------
+-- AIMBOT
+--------------------------------------------------
+local function applyAimbot()
+	if not ENABLED("AimbotBTN") then return end
+	local target = enemyList[currentIndex]
+	if target then
+		Camera.CFrame = CFrame.new(
+			Camera.CFrame.Position,
+			target.Character.Head.Position
+		)
+	end
+end
+
+--------------------------------------------------
+-- TP TO PLAYER
+--------------------------------------------------
+local function tpToPlayer()
+	if not ENABLED("TP to playerBTN") then return end
+	local hrp = HRP()
+	local target = enemyList[currentIndex]
+	if hrp and target and target.Character:FindFirstChild("HumanoidRootPart") then
+		hrp.CFrame =
+			target.Character.HumanoidRootPart.CFrame + Vector3.new(0,3,0)
+	end
+end
+
+--------------------------------------------------
+-- RESPAWN HANDLER (VALUES AUTO-REAPPLY)
+--------------------------------------------------
+LocalPlayer.CharacterAdded:Connect(function(char)
+	local hum = char:WaitForChild("Humanoid")
+
+	defaults.WalkSpeed = hum.WalkSpeed
+	defaults.JumpHeight = hum.JumpHeight
+
+	bodyVelocity = nil
+	bodyGyro = nil
+end)
+
+
+--------------------------------------------------
+-- MAIN LOOP
+--------------------------------------------------
 RunService.RenderStepped:Connect(function(dt)
-	if not humanoid then return end
-	tick += dt
+	tickTimer += dt
 
-	--------------------------------------------------
-	-- SPEED / JUMP
-	--------------------------------------------------
-	humanoid.WalkSpeed = enabled("SpeedBTN") and stat("TEXTBOX2", 16) or 16
-	humanoid.JumpHeight = enabled("Jump heightBTN") and stat("TEXTBOX1", 7.2) or 7.2
-
-	--------------------------------------------------
-	-- INFINITE JUMP
-	--------------------------------------------------
-	if enabled("INF jumpBTN") and UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-		humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+	if tickTimer >= 0.1 then
+		tickTimer = 0
+		updateEnemies()
+		applyXray()
+		tpToPlayer()
 	end
 
-	--------------------------------------------------
-	-- NOCLIP
-	--------------------------------------------------
-	if enabled("No clipBTN") then
-		if not next(savedCollision) then saveCollision() end
-		for _, p in ipairs(character:GetDescendants()) do
-			if p:IsA("BasePart") then
-				p.CanCollide = false
-				p.CanTouch = false
-				p.CanQuery = false
-			end
-		end
-	elseif next(savedCollision) then
-		restoreCollision()
-		table.clear(savedCollision)
-	end
-
-	--------------------------------------------------
-	-- FLY
-	--------------------------------------------------
-	setFly(enabled("Fly speedBTN"))
-
-	if bodyVelocity then
-		local cam = Camera.CFrame
-		local move = humanoid.MoveDirection
-		local dir =
-			cam.LookVector * move:Dot(cam.LookVector) +
-			cam.RightVector * move:Dot(cam.RightVector)
-
-		if dir.Magnitude > 0 then dir = dir.Unit end
-
-		bodyVelocity.Velocity = dir * stat("TEXTBOX3", 80)
-		bodyGyro.CFrame = cam
-	end
-
-	--------------------------------------------------
-	-- XRAY / AIMBOT (0.1s)
-	--------------------------------------------------
-	if tick >= 0.1 then
-		tick = 0
-
-		local enemies = {}
-		for _, p in ipairs(Players:GetPlayers()) do
-			if p ~= LocalPlayer and p.Team ~= LocalPlayer.Team then
-				table.insert(enemies, p)
-			end
-		end
-
-		updateXray(enemies)
-
-		if enabled("AimbotBTN") and enemies[1] and enemies[1].Character then
-			Camera.CFrame = CFrame.new(
-				Camera.CFrame.Position,
-				enemies[1].Character.Head.Position
-			)
-		end
-	end
+	applyNoclip()
+	updateFly()
+	applyMovement()
+	applyAimbot()
 end)

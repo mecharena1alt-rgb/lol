@@ -18,13 +18,15 @@ gui.Parent = player:WaitForChild("PlayerGui")
 local DEFAULT_ENABLED = {
 	["X-rayBTN"] = true,
 	["INF jumpBTN"] = true,
+	["SpeedBTN"] = true,
 }
 
 local DEFAULT_STATS = {
-	["TEXTBOX1"] = 80,
-	["TEXTBOX2"] = 80,
-	["TEXTBOX3"] = 80,
+	["TEXTBOX1"] = 64,
+	["TEXTBOX2"] = 64,
+	["TEXTBOX3"] = 320,
 }
+
 
 -- small X visual offset
 local SMALLXOFFSET = Vector2.new(0, -29)
