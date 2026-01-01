@@ -1,4 +1,4 @@
---// MERGED GUI + LOGIC SCRIPT (FIXED)
+--// FINAL MERGED GUI + FULL FUNCTIONALITY SCRIPT
 --// LocalScript
 
 --------------------------------------------------
@@ -12,7 +12,7 @@ local Camera = workspace.CurrentCamera
 local LP = Players.LocalPlayer
 
 --------------------------------------------------
--- SINGLE SOURCE OF TRUTH
+-- SINGLE SOURCE OF TRUTH (GUI + LOGIC)
 --------------------------------------------------
 local ENABLED = {
 	["AimbotBTN"] = false,
@@ -20,8 +20,8 @@ local ENABLED = {
 	["No clipBTN"] = false,
 	["TP to playerBTN"] = false,
 	["INF jumpBTN"] = true,
-	["Jump heightBTN"] = false,
-	["SpeedBTN"] = false,
+	["Jump heightBTN"] = true,
+	["SpeedBTN"] = true,
 	["Fly speedBTN"] = false,
 }
 
@@ -32,202 +32,129 @@ local STATS = {
 }
 
 --------------------------------------------------
--- GUI
+-- INTERNAL STATE (RESTORED)
 --------------------------------------------------
-local gui = Instance.new("ScreenGui", LP:WaitForChild("PlayerGui"))
-gui.Name = "MenuUI"
-gui.ResetOnSpawn = false
+local enemyList = {}
+local currentIndex = 1
+local tickTimer = 0
 
-local SMALLXOFFSET = Vector2.new(0, -29)
-local ButtonRefs = {}
-local TextBoxes = {}
+local highlights = {}
+local bodyVelocity, bodyGyro
+local savedCollision = {}
 
-local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0,400,0,400)
-frame.Position = UDim2.fromScale(0.5,0.5)
-frame.AnchorPoint = Vector2.new(0.5,0.5)
-frame.BackgroundColor3 = Color3.fromRGB(34,34,34)
-frame.BorderSizePixel = 0
-
-local frame2 = Instance.new("Frame", gui)
-frame2.Size = UDim2.new(0,50,0,50)
-frame2.Position = UDim2.fromScale(0.5,0.5)
-frame2.AnchorPoint = Vector2.new(0.5,0.5)
-frame2.BackgroundTransparency = 1
-frame2.Visible = false
-
---------------------------------------------------
--- UI HELPERS
---------------------------------------------------
-local function makeButton(name,text,size,pos,parent,bg)
-	local b = Instance.new("TextButton", parent)
-	b.Name = name
-	b.Size = size
-	b.Position = pos
-	b.Text = text
-	b.TextScaled = true
-	b.Font = Enum.Font.Gotham
-	b.TextColor3 = Color3.new(1,1,1)
-	b.BackgroundColor3 = bg
-	b.BorderSizePixel = 0
-	ButtonRefs[name] = b
-	return b
-end
-
-local function syncButton(name)
-	local b = ButtonRefs[name]
-	if not b then return end
-	b.BackgroundColor3 = ENABLED[name]
-		and Color3.fromRGB(17,17,17)
-		or Color3.fromRGB(34,34,34)
-end
-
---------------------------------------------------
--- LEFT BUTTONS
---------------------------------------------------
-local buttons = {
-	{"AimbotBTN","Aimbot",0},
-	{"X-rayBTN","X-ray",0.125},
-	{"No clipBTN","No clip",0.25},
-	{"TP to playerBTN","TP to player",0.375},
-	{"INF jumpBTN","INF jump",0.5},
-	{"Jump heightBTN","Jump height",0.625},
-	{"SpeedBTN","Speed",0.75},
-	{"Fly speedBTN","Fly speed",0.875},
+local defaultMovement = {
+	WalkSpeed = nil,
+	JumpHeight = nil,
+	UseJumpPower = nil,
+	JumpPower = nil
 }
 
-for _,info in ipairs(buttons) do
-	local btn = makeButton(
-		info[1],
-		info[2],
-		UDim2.new(0,200,0,50),
-		UDim2.new(0,0,info[3],0),
-		frame,
-		Color3.fromRGB(34,34,34)
-	)
+--------------------------------------------------
+-- UTILS
+--------------------------------------------------
+local function isAlive(p)
+	local h = p.Character and p.Character:FindFirstChildOfClass("Humanoid")
+	return h and h.Health > 0
+end
 
-	syncButton(btn.Name)
-
-	btn.MouseButton1Click:Connect(function()
-		ENABLED[btn.Name] = not ENABLED[btn.Name]
-		syncButton(btn.Name)
-	end)
+local function isEnemy(p)
+	return p ~= LP and p.Team ~= LP.Team
 end
 
 --------------------------------------------------
--- BIG X BUTTON
+-- ENEMY UPDATE
 --------------------------------------------------
-local XBTN = makeButton("XBTN","X",UDim2.new(0,200,0,250),UDim2.new(0.5,0,0,0),frame,Color3.fromRGB(31,31,31))
-XBTN.Font = Enum.Font.GothamBold
-XBTN.MouseButton1Click:Connect(function()
-	frame.Visible = false
-	frame2.Visible = true
-end)
+local function updateEnemies()
+	table.clear(enemyList)
 
---------------------------------------------------
--- TEXT BOXES
---------------------------------------------------
-local function makeTextBox(name,posY)
-	local tb = Instance.new("TextBox", frame)
-	tb.Name = name
-	tb.Size = UDim2.new(0,100,0,50)
-	tb.Position = UDim2.new(0.5,0,posY,0)
-	tb.Text = tostring(STATS[name])
-	tb.TextScaled = true
-	tb.Font = Enum.Font.GothamBold
-	tb.TextColor3 = Color3.new(1,1,1)
-	tb.BackgroundColor3 = Color3.fromRGB(25,25,25)
-	tb.BorderSizePixel = 0
-	tb.ClearTextOnFocus = false
-
-	tb.FocusLost:Connect(function()
-		local n = tonumber(tb.Text)
-		if n then
-			STATS[name] = n
-		else
-			tb.Text = tostring(STATS[name])
+	for _, p in ipairs(Players:GetPlayers()) do
+		if isEnemy(p) and isAlive(p) and p.Character and p.Character:FindFirstChild("Head") then
+			table.insert(enemyList, p)
 		end
-	end)
-
-	TextBoxes[name] = tb
-end
-
-makeTextBox("TEXTBOX1",0.625)
-makeTextBox("TEXTBOX2",0.75)
-makeTextBox("TEXTBOX3",0.875)
-
---------------------------------------------------
--- +/- BUTTONS
---------------------------------------------------
-local function adjust(name,amt)
-	STATS[name] += amt
-	TextBoxes[name].Text = tostring(STATS[name])
-end
-
-local pm = {
-	{"+","+BTN1",0.875,0.625,"TEXTBOX1",1},
-	{"+","+BTN2",0.875,0.75,"TEXTBOX2",1},
-	{"+","+BTN3",0.875,0.875,"TEXTBOX3",1},
-	{"-","-BTN1",0.75,0.625,"TEXTBOX1",-1},
-	{"-","-BTN2",0.75,0.75,"TEXTBOX2",-1},
-	{"-","-BTN3",0.75,0.875,"TEXTBOX3",-1},
-}
-
-for _,b in ipairs(pm) do
-	local btn = makeButton(b[2],b[1],UDim2.new(0,50,0,50),UDim2.new(b[3],0,b[4],0),frame,Color3.fromRGB(190,190,190))
-	btn.TextColor3 = Color3.new(0,0,0)
-	btn.MouseButton1Click:Connect(function()
-		adjust(b[5],b[6])
-	end)
-end
-
---------------------------------------------------
--- SMALL X
---------------------------------------------------
-local smallx = Instance.new("TextButton", frame2)
-smallx.Size = UDim2.new(0,50,0,50)
-smallx.Position = UDim2.new(0.5,SMALLXOFFSET.X,0.5,SMALLXOFFSET.Y)
-smallx.AnchorPoint = Vector2.new(0.5,0.5)
-smallx.BackgroundTransparency = 1
-smallx.Text = ""
-
-local xl = Instance.new("TextLabel", smallx)
-xl.Size = UDim2.fromScale(1,1)
-xl.AnchorPoint = Vector2.new(0.5,0.5)
-xl.Position = UDim2.fromScale(0.5,0.5)
-xl.Text = "X"
-xl.Font = Enum.Font.GothamBold
-xl.TextColor3 = Color3.new(1,1,1)
-xl.BackgroundTransparency = 1
-
-smallx.MouseButton1Click:Connect(function()
-	frame.Visible = true
-	frame2.Visible = false
-end)
-
---------------------------------------------------
--- KEYBINDS (SYNCED)
---------------------------------------------------
-local KEYMAP = {
-	G="AimbotBTN", H="X-rayBTN", N="No clipBTN", Y="TP to playerBTN",
-	L="INF jumpBTN", K="Jump heightBTN", J="SpeedBTN", F="Fly speedBTN"
-}
-
-UserInputService.InputBegan:Connect(function(i,gp)
-	if gp then return end
-	local name = KEYMAP[i.KeyCode.Name]
-	if name then
-		ENABLED[name] = not ENABLED[name]
-		syncButton(name)
 	end
-end)
+
+	table.sort(enemyList, function(a, b)
+		return
+			(Camera.CFrame.Position - a.Character.Head.Position).Magnitude <
+			(Camera.CFrame.Position - b.Character.Head.Position).Magnitude
+	end)
+
+	if currentIndex > #enemyList then
+		currentIndex = 1
+	end
+end
 
 --------------------------------------------------
--- FLY SYSTEM
+-- XRAY (FULL RESTORE)
 --------------------------------------------------
-local bodyVelocity
-local bodyGyro
+local function applyXray()
+	if not ENABLED["X-rayBTN"] then
+		for _, h in pairs(highlights) do
+			h:Destroy()
+		end
+		table.clear(highlights)
+		return
+	end
 
+	for _, p in ipairs(enemyList) do
+		if not highlights[p] then
+			local h = Instance.new("Highlight")
+			h.Adornee = p.Character
+			h.FillTransparency = 0.5
+			h.OutlineTransparency = 0
+			h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+			h.FillColor = Color3.fromRGB(255, 0, 0)
+			h.Parent = Camera
+			highlights[p] = h
+		end
+	end
+end
+
+--------------------------------------------------
+-- TRUE NOCLIP (FULL RESTORE)
+--------------------------------------------------
+local function saveCollisionState(char)
+	savedCollision = {}
+	for _, part in ipairs(char:GetDescendants()) do
+		if part:IsA("BasePart") then
+			savedCollision[part] = {
+				part.CanCollide,
+				part.CanTouch,
+				part.CanQuery
+			}
+		end
+	end
+end
+
+local function restoreCollisionState()
+	for part, s in pairs(savedCollision) do
+		if part then
+			part.CanCollide, part.CanTouch, part.CanQuery = s[1], s[2], s[3]
+		end
+	end
+end
+
+local function applyNoclip()
+	if not ENABLED["No clipBTN"] then return end
+	local char = LP.Character
+	if not char then return end
+
+	if not next(savedCollision) then
+		saveCollisionState(char)
+	end
+
+	for _, part in ipairs(char:GetDescendants()) do
+		if part:IsA("BasePart") then
+			part.CanCollide = false
+			part.CanTouch = false
+			part.CanQuery = false
+		end
+	end
+end
+
+--------------------------------------------------
+-- FLY (FULL RESTORE)
+--------------------------------------------------
 local function enableFly(on)
 	local char = LP.Character
 	if not char then return end
@@ -239,26 +166,23 @@ local function enableFly(on)
 	if not on then
 		if bodyVelocity then bodyVelocity:Destroy() end
 		if bodyGyro then bodyGyro:Destroy() end
-		bodyVelocity = nil
-		bodyGyro = nil
+		bodyVelocity, bodyGyro = nil, nil
 		hum.PlatformStand = false
 		return
 	end
 
 	bodyVelocity = Instance.new("BodyVelocity", hrp)
-	bodyVelocity.MaxForce = Vector3.new(1e9,1e9,1e9)
+	bodyVelocity.MaxForce = Vector3.new(1e9, 1e9, 1e9)
 
 	bodyGyro = Instance.new("BodyGyro", hrp)
-	bodyGyro.MaxTorque = Vector3.new(1e9,1e9,1e9)
+	bodyGyro.MaxTorque = Vector3.new(1e9, 1e9, 1e9)
 
 	hum.PlatformStand = true
 end
 
 local function updateFly()
-	if not bodyVelocity then return end
-	local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-	if not hum then return end
-
+	if not ENABLED["Fly speedBTN"] or not bodyVelocity then return end
+	local hum = LP.Character:FindFirstChildOfClass("Humanoid")
 	local cam = Camera.CFrame
 	local move = hum.MoveDirection
 
@@ -273,35 +197,115 @@ local function updateFly()
 end
 
 --------------------------------------------------
+-- MOVEMENT HACKS (FULL RESTORE)
+--------------------------------------------------
+local function cacheDefaultMovement(hum)
+	if not defaultMovement.WalkSpeed then
+		defaultMovement.WalkSpeed = hum.WalkSpeed
+		defaultMovement.JumpHeight = hum.JumpHeight
+		defaultMovement.UseJumpPower = hum.UseJumpPower
+		defaultMovement.JumpPower = hum.JumpPower
+	end
+end
+
+local function applyMovement()
+	local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+	if not hum then return end
+
+	cacheDefaultMovement(hum)
+
+	if ENABLED["SpeedBTN"] then
+		hum.WalkSpeed = STATS.TEXTBOX2
+	else
+		hum.WalkSpeed = defaultMovement.WalkSpeed
+	end
+
+	if ENABLED["Jump heightBTN"] then
+		hum.UseJumpPower = false
+		hum.JumpHeight = STATS.TEXTBOX1
+	else
+		hum.UseJumpPower = defaultMovement.UseJumpPower
+		hum.JumpHeight = defaultMovement.JumpHeight
+		hum.JumpPower = defaultMovement.JumpPower
+	end
+end
+
+--------------------------------------------------
 -- INFINITE JUMP
 --------------------------------------------------
 UserInputService.JumpRequest:Connect(function()
 	if ENABLED["INF jumpBTN"] then
-		local h = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-		if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end
+		local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+		if hum then
+			hum:ChangeState(Enum.HumanoidStateType.Jumping)
+		end
 	end
 end)
 
 --------------------------------------------------
--- MAIN LOOP
+-- RANDOM TELEPORT
 --------------------------------------------------
-RunService.RenderStepped:Connect(function()
-	local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+local function randomTeleport()
+	if not ENABLED["TP to playerBTN"] then return end
 
-	if hum then
-		if ENABLED["SpeedBTN"] then
-			hum.WalkSpeed = STATS.TEXTBOX2
-		end
-		if ENABLED["Jump heightBTN"] then
-			hum.UseJumpPower = false
-			hum.JumpHeight = STATS.TEXTBOX1
+	local char = LP.Character
+	local myRoot = char and char:FindFirstChild("HumanoidRootPart")
+	if not myRoot then return end
+
+	local others = {}
+
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= LP and plr.Character then
+			local root = plr.Character:FindFirstChild("HumanoidRootPart")
+			if root then table.insert(others, root) end
 		end
 	end
+
+	if #others > 0 then
+		myRoot.CFrame = others[math.random(#others)].CFrame + Vector3.new(0,3,0)
+	end
+end
+
+--------------------------------------------------
+-- RESPAWN FIX
+--------------------------------------------------
+LP.CharacterAdded:Connect(function()
+	savedCollision = {}
+	defaultMovement = {
+		WalkSpeed = nil,
+		JumpHeight = nil,
+		UseJumpPower = nil,
+		JumpPower = nil
+	}
+end)
+
+--------------------------------------------------
+-- MAIN LOOP (FULLY RESTORED)
+--------------------------------------------------
+RunService.RenderStepped:Connect(function(dt)
+	tickTimer += dt
+
+	if tickTimer >= 0.1 then
+		tickTimer = 0
+		updateEnemies()
+		applyXray()
+		applyMovement()
+		randomTeleport()
+	end
+
+	applyNoclip()
 
 	if ENABLED["Fly speedBTN"] then
 		if not bodyVelocity then enableFly(true) end
 		updateFly()
 	else
 		if bodyVelocity then enableFly(false) end
+	end
+
+	if ENABLED["AimbotBTN"] then
+		local target = enemyList[currentIndex]
+		if target then
+			Camera.CFrame = CFrame.new(Camera.CFrame.Position, target.Character.Head.Position)
+		end
 	end
 end)
