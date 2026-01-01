@@ -30,14 +30,18 @@ local SPEEDS = {
 --------------------------------------------------
 local aimbotEnabled = ENABLED["Aimbot"]
 local xrayEnabled = ENABLED["X-ray"]
+local noclipEnabled = ENABLED["noclip"]
+local flyEnabled = ENABLED["flying"]
 local walkHackEnabled = ENABLED["WalkHack"]
 local jumpHackEnabled = ENABLED["JumpHack"]
 local infiniteJumpEnabled = ENABLED["INFINITEJump"]
 
 local enemyList = {}
 local currentIndex = 1
-local lastEnemyUpdate = 0
+local enemyTimer = 0
+
 local highlights = {}
+local bodyVelocity, bodyGyro
 
 --------------------------------------------------
 -- INPUT
@@ -58,6 +62,20 @@ UserInputService.InputBegan:Connect(function(input, gp)
 
 	elseif input.KeyCode == Enum.KeyCode.H then
 		xrayEnabled = not xrayEnabled
+
+	elseif input.KeyCode == Enum.KeyCode.N then
+		noclipEnabled = not noclipEnabled
+		local char = LocalPlayer.Character
+		if char then
+			if noclipEnabled then
+				saveCollisionState(char)
+			else
+				restoreCollisionState()
+			end
+		end
+
+	elseif input.KeyCode == Enum.KeyCode.F then
+		flyEnabled = not flyEnabled
 
 	elseif input.KeyCode == Enum.KeyCode.J then
 		walkHackEnabled = not walkHackEnabled
@@ -135,6 +153,101 @@ local function applyXray()
 end
 
 --------------------------------------------------
+-- TRUE NOCLIP (STATE SAFE)
+--------------------------------------------------
+local savedCollision = {}
+
+function saveCollisionState(character)
+	savedCollision = {}
+	for _, part in ipairs(character:GetDescendants()) do
+		if part:IsA("BasePart") then
+			savedCollision[part] = {
+				CanCollide = part.CanCollide,
+				CanTouch = part.CanTouch,
+				CanQuery = part.CanQuery
+			}
+		end
+	end
+end
+
+function restoreCollisionState()
+	for part, state in pairs(savedCollision) do
+		if part and part:IsA("BasePart") then
+			part.CanCollide = state.CanCollide
+			part.CanTouch = state.CanTouch
+			part.CanQuery = state.CanQuery
+		end
+	end
+end
+
+local function applyNoclip()
+	if not noclipEnabled then return end
+	local char = LocalPlayer.Character
+	if not char then return end
+
+	for _, part in ipairs(char:GetDescendants()) do
+		if part:IsA("BasePart") then
+			part.CanCollide = false
+			part.CanTouch = false
+			part.CanQuery = false
+		end
+	end
+end
+
+--------------------------------------------------
+-- FLY
+--------------------------------------------------
+local function enableFly(enable)
+	local char = LocalPlayer.Character
+	if not char then return end
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if not hrp or not hum then return end
+
+	if not enable then
+		if bodyVelocity then bodyVelocity:Destroy() end
+		if bodyGyro then bodyGyro:Destroy() end
+		bodyVelocity, bodyGyro = nil, nil
+		hum.PlatformStand = false
+		return
+	end
+
+	bodyVelocity = Instance.new("BodyVelocity")
+	bodyVelocity.MaxForce = Vector3.new(1e9,1e9,1e9)
+	bodyVelocity.Parent = hrp
+
+	bodyGyro = Instance.new("BodyGyro")
+	bodyGyro.MaxTorque = Vector3.new(1e9,1e9,1e9)
+	bodyGyro.Parent = hrp
+
+	hum.PlatformStand = true
+end
+
+local function updateFly()
+	if not flyEnabled or not bodyVelocity or not bodyGyro then return end
+
+	local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+	if not hum then return end
+
+	local camCF = Camera.CFrame
+	local move = hum.MoveDirection
+
+	local forward = camCF.LookVector
+	local right = camCF.RightVector
+
+	local dir =
+		(forward * move:Dot(forward)) +
+		(right * move:Dot(right))
+
+	if dir.Magnitude > 0 then
+		dir = dir.Unit
+	end
+
+	bodyVelocity.Velocity = dir * SPEEDS.FlyingSpeed
+	bodyGyro.CFrame = camCF
+end
+
+--------------------------------------------------
 -- WALK / JUMP HACK (RETICK)
 --------------------------------------------------
 local function applyMovementHacks()
@@ -146,8 +259,8 @@ local function applyMovementHacks()
 	end
 
 	if jumpHackEnabled then
-		hum.JumpHeight = SPEEDS.JumpHeight
 		hum.UseJumpPower = false
+		hum.JumpHeight = SPEEDS.JumpHeight
 	end
 end
 
@@ -167,15 +280,23 @@ end)
 -- MAIN LOOP
 --------------------------------------------------
 RunService.RenderStepped:Connect(function(dt)
-	lastEnemyUpdate += dt
-	if lastEnemyUpdate >= 0.1 then
-		lastEnemyUpdate = 0
+	enemyTimer += dt
+	if enemyTimer >= 0.1 then
+		enemyTimer = 0
 		updateEnemies()
 		applyXray()
 		applyMovementHacks()
 	end
 
-	-- AIMBOT
+	applyNoclip()
+
+	if flyEnabled then
+		if not bodyVelocity then enableFly(true) end
+		updateFly()
+	else
+		if bodyVelocity then enableFly(false) end
+	end
+
 	if aimbotEnabled then
 		local target = enemyList[currentIndex]
 		if target and target.Character and target.Character:FindFirstChild("Head") then
