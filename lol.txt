@@ -17,6 +17,7 @@ local ENABLED = {
 	["WalkHack"] = true,
 	["JumpHack"] = true,
 	["INFINITEJump"] = true,
+	["RandomTP"] = false,
 }
 
 local SPEEDS = {
@@ -28,20 +29,22 @@ local SPEEDS = {
 --------------------------------------------------
 -- STATE
 --------------------------------------------------
-local aimbotEnabled = ENABLED["Aimbot"]
-local xrayEnabled = ENABLED["X-ray"]
-local noclipEnabled = ENABLED["noclip"]
-local flyEnabled = ENABLED["flying"]
-local walkHackEnabled = ENABLED["WalkHack"]
-local jumpHackEnabled = ENABLED["JumpHack"]
-local infiniteJumpEnabled = ENABLED["INFINITEJump"]
+local aimbotEnabled      = ENABLED["Aimbot"]
+local xrayEnabled        = ENABLED["X-ray"]
+local noclipEnabled      = ENABLED["noclip"]
+local flyEnabled         = ENABLED["flying"]
+local walkHackEnabled    = ENABLED["WalkHack"]
+local jumpHackEnabled    = ENABLED["JumpHack"]
+local infiniteJumpEnabled= ENABLED["INFINITEJump"]
+local randomTPEnabled    = ENABLED["RandomTP"]
 
 local enemyList = {}
 local currentIndex = 1
-local enemyTimer = 0
+local timer = 0
 
 local highlights = {}
 local bodyVelocity, bodyGyro
+local savedCollision = {}
 
 --------------------------------------------------
 -- INPUT
@@ -54,10 +57,7 @@ UserInputService.InputBegan:Connect(function(input, gp)
 
 	elseif input.KeyCode == Enum.KeyCode.X then
 		if #enemyList > 1 then
-			currentIndex += 1
-			if currentIndex > #enemyList then
-				currentIndex = 1
-			end
+			currentIndex = currentIndex % #enemyList + 1
 		end
 
 	elseif input.KeyCode == Enum.KeyCode.H then
@@ -85,19 +85,22 @@ UserInputService.InputBegan:Connect(function(input, gp)
 
 	elseif input.KeyCode == Enum.KeyCode.L then
 		infiniteJumpEnabled = not infiniteJumpEnabled
+
+	elseif input.KeyCode == Enum.KeyCode.Y then
+		randomTPEnabled = not randomTPEnabled
 	end
 end)
 
 --------------------------------------------------
 -- UTILS
 --------------------------------------------------
-local function isAlive(plr)
-	local hum = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
-	return hum and hum.Health > 0
+local function isAlive(p)
+	local h = p.Character and p.Character:FindFirstChildOfClass("Humanoid")
+	return h and h.Health > 0
 end
 
-local function isEnemy(plr)
-	return plr ~= LocalPlayer and plr.Team ~= LocalPlayer.Team
+local function isEnemy(p)
+	return p ~= LocalPlayer and p.Team ~= LocalPlayer.Team
 end
 
 --------------------------------------------------
@@ -105,17 +108,13 @@ end
 --------------------------------------------------
 local function updateEnemies()
 	table.clear(enemyList)
-
-	for _, plr in ipairs(Players:GetPlayers()) do
-		if isEnemy(plr) and isAlive(plr) then
-			local head = plr.Character and plr.Character:FindFirstChild("Head")
-			if head then
-				table.insert(enemyList, plr)
-			end
+	for _, p in ipairs(Players:GetPlayers()) do
+		if isEnemy(p) and isAlive(p) and p.Character and p.Character:FindFirstChild("Head") then
+			table.insert(enemyList, p)
 		end
 	end
 
-	table.sort(enemyList, function(a, b)
+	table.sort(enemyList, function(a,b)
 		return
 			(Camera.CFrame.Position - a.Character.Head.Position).Magnitude <
 			(Camera.CFrame.Position - b.Character.Head.Position).Magnitude
@@ -131,51 +130,45 @@ end
 --------------------------------------------------
 local function applyXray()
 	if not xrayEnabled then
-		for p in pairs(highlights) do
-			highlights[p]:Destroy()
-			highlights[p] = nil
-		end
+		for p,h in pairs(highlights) do h:Destroy() end
+		table.clear(highlights)
 		return
 	end
 
-	for _, plr in ipairs(enemyList) do
-		if not highlights[plr] then
+	for _, p in ipairs(enemyList) do
+		if not highlights[p] then
 			local h = Instance.new("Highlight")
-			h.Adornee = plr.Character
+			h.Adornee = p.Character
 			h.FillTransparency = 0.5
 			h.OutlineTransparency = 0
 			h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 			h.FillColor = Color3.fromRGB(255,0,0)
 			h.Parent = Camera
-			highlights[plr] = h
+			highlights[p] = h
 		end
 	end
 end
 
 --------------------------------------------------
--- TRUE NOCLIP (STATE SAFE)
+-- TRUE NOCLIP
 --------------------------------------------------
-local savedCollision = {}
-
-function saveCollisionState(character)
+function saveCollisionState(char)
 	savedCollision = {}
-	for _, part in ipairs(character:GetDescendants()) do
+	for _, part in ipairs(char:GetDescendants()) do
 		if part:IsA("BasePart") then
 			savedCollision[part] = {
-				CanCollide = part.CanCollide,
-				CanTouch = part.CanTouch,
-				CanQuery = part.CanQuery
+				part.CanCollide,
+				part.CanTouch,
+				part.CanQuery
 			}
 		end
 	end
 end
 
 function restoreCollisionState()
-	for part, state in pairs(savedCollision) do
-		if part and part:IsA("BasePart") then
-			part.CanCollide = state.CanCollide
-			part.CanTouch = state.CanTouch
-			part.CanQuery = state.CanQuery
+	for part, s in pairs(savedCollision) do
+		if part then
+			part.CanCollide, part.CanTouch, part.CanQuery = s[1], s[2], s[3]
 		end
 	end
 end
@@ -184,7 +177,6 @@ local function applyNoclip()
 	if not noclipEnabled then return end
 	local char = LocalPlayer.Character
 	if not char then return end
-
 	for _, part in ipairs(char:GetDescendants()) do
 		if part:IsA("BasePart") then
 			part.CanCollide = false
@@ -197,14 +189,14 @@ end
 --------------------------------------------------
 -- FLY
 --------------------------------------------------
-local function enableFly(enable)
+local function enableFly(on)
 	local char = LocalPlayer.Character
 	if not char then return end
 	local hrp = char:FindFirstChild("HumanoidRootPart")
 	local hum = char:FindFirstChildOfClass("Humanoid")
 	if not hrp or not hum then return end
 
-	if not enable then
+	if not on then
 		if bodyVelocity then bodyVelocity:Destroy() end
 		if bodyGyro then bodyGyro:Destroy() end
 		bodyVelocity, bodyGyro = nil, nil
@@ -224,31 +216,19 @@ local function enableFly(enable)
 end
 
 local function updateFly()
-	if not flyEnabled or not bodyVelocity or not bodyGyro then return end
-
-	local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-	if not hum then return end
-
-	local camCF = Camera.CFrame
+	if not flyEnabled or not bodyVelocity then return end
+	local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+	local cam = Camera.CFrame
 	local move = hum.MoveDirection
-
-	local forward = camCF.LookVector
-	local right = camCF.RightVector
-
-	local dir =
-		(forward * move:Dot(forward)) +
-		(right * move:Dot(right))
-
-	if dir.Magnitude > 0 then
-		dir = dir.Unit
-	end
-
+	local dir = (cam.LookVector * move:Dot(cam.LookVector)) +
+	            (cam.RightVector * move:Dot(cam.RightVector))
+	if dir.Magnitude > 0 then dir = dir.Unit end
 	bodyVelocity.Velocity = dir * SPEEDS.FlyingSpeed
-	bodyGyro.CFrame = camCF
+	bodyGyro.CFrame = cam
 end
 
 --------------------------------------------------
--- WALK / JUMP HACK (RETICK)
+-- WALK / JUMP HACKS
 --------------------------------------------------
 local function applyMovementHacks()
 	local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
@@ -269,7 +249,7 @@ end
 --------------------------------------------------
 UserInputService.JumpRequest:Connect(function()
 	if infiniteJumpEnabled then
-		local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+		local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
 		if hum then
 			hum:ChangeState(Enum.HumanoidStateType.Jumping)
 		end
@@ -277,15 +257,29 @@ UserInputService.JumpRequest:Connect(function()
 end)
 
 --------------------------------------------------
+-- RANDOM TELEPORT
+--------------------------------------------------
+local function randomTeleport()
+	if not randomTPEnabled or #enemyList == 0 then return end
+	local target = enemyList[math.random(#enemyList)]
+	local hrp = target.Character and target.Character:FindFirstChild("HumanoidRootPart")
+	local myHRP = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+	if hrp and myHRP then
+		myHRP.CFrame = hrp.CFrame * CFrame.new(0,0,3)
+	end
+end
+
+--------------------------------------------------
 -- MAIN LOOP
 --------------------------------------------------
 RunService.RenderStepped:Connect(function(dt)
-	enemyTimer += dt
-	if enemyTimer >= 0.1 then
-		enemyTimer = 0
+	timer += dt
+	if timer >= 0.1 then
+		timer = 0
 		updateEnemies()
-		applyXray()
-		applyMovementHacks()
+		if xrayEnabled then applyXray() end
+		if walkHackEnabled or jumpHackEnabled then applyMovementHacks() end
+		if randomTPEnabled then randomTeleport() end
 	end
 
 	applyNoclip()
@@ -298,9 +292,9 @@ RunService.RenderStepped:Connect(function(dt)
 	end
 
 	if aimbotEnabled then
-		local target = enemyList[currentIndex]
-		if target and target.Character and target.Character:FindFirstChild("Head") then
-			Camera.CFrame = CFrame.new(Camera.CFrame.Position, target.Character.Head.Position)
+		local t = enemyList[currentIndex]
+		if t then
+			Camera.CFrame = CFrame.new(Camera.CFrame.Position, t.Character.Head.Position)
 		end
 	end
 end)
