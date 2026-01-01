@@ -1,10 +1,9 @@
---// Services
+--// SERVICES
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Camera = workspace.CurrentCamera
 
---// Player
 local LocalPlayer = Players.LocalPlayer
 
 --------------------------------------------------
@@ -15,12 +14,15 @@ local ENABLED = {
 	["X-ray"] = true,
 	["noclip"] = false,
 	["flying"] = false,
+	["WalkHack"] = true,
+	["JumpHack"] = true,
+	["INFINITEJump"] = true,
 }
 
 local SPEEDS = {
 	["FlyingSpeed"] = 80,
 	["WalkingSpeed"] = 80,
-	["JumpHight"] = 80,
+	["JumpHeight"] = 80,
 }
 
 --------------------------------------------------
@@ -28,11 +30,14 @@ local SPEEDS = {
 --------------------------------------------------
 local aimbotEnabled = ENABLED["Aimbot"]
 local xrayEnabled = ENABLED["X-ray"]
-local noclipEnabled = ENABLED["noclip"]
-local flyEnabled = ENABLED["flying"]
+local walkHackEnabled = ENABLED["WalkHack"]
+local jumpHackEnabled = ENABLED["JumpHack"]
+local infiniteJumpEnabled = ENABLED["INFINITEJump"]
 
+local enemyList = {}
+local currentIndex = 1
+local lastEnemyUpdate = 0
 local highlights = {}
-local bodyVelocity, bodyGyro
 
 --------------------------------------------------
 -- INPUT
@@ -43,157 +48,138 @@ UserInputService.InputBegan:Connect(function(input, gp)
 	if input.KeyCode == Enum.KeyCode.G then
 		aimbotEnabled = not aimbotEnabled
 
+	elseif input.KeyCode == Enum.KeyCode.X then
+		if #enemyList > 1 then
+			currentIndex += 1
+			if currentIndex > #enemyList then
+				currentIndex = 1
+			end
+		end
+
 	elseif input.KeyCode == Enum.KeyCode.H then
 		xrayEnabled = not xrayEnabled
 
-	elseif input.KeyCode == Enum.KeyCode.N then
-		noclipEnabled = not noclipEnabled
+	elseif input.KeyCode == Enum.KeyCode.J then
+		walkHackEnabled = not walkHackEnabled
 
-	elseif input.KeyCode == Enum.KeyCode.F then
-		flyEnabled = not flyEnabled
+	elseif input.KeyCode == Enum.KeyCode.K then
+		jumpHackEnabled = not jumpHackEnabled
+
+	elseif input.KeyCode == Enum.KeyCode.L then
+		infiniteJumpEnabled = not infiniteJumpEnabled
 	end
 end)
 
 --------------------------------------------------
 -- UTILS
 --------------------------------------------------
-local function isAlive(player)
-	local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+local function isAlive(plr)
+	local hum = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
 	return hum and hum.Health > 0
 end
 
-local function isEnemy(player)
-	return player ~= LocalPlayer and player.Team ~= LocalPlayer.Team
+local function isEnemy(plr)
+	return plr ~= LocalPlayer and plr.Team ~= LocalPlayer.Team
 end
 
-local function getNearestEnemyHead()
-	local closest, dist = nil, math.huge
+--------------------------------------------------
+-- ENEMY UPDATE (0.1s)
+--------------------------------------------------
+local function updateEnemies()
+	table.clear(enemyList)
+
 	for _, plr in ipairs(Players:GetPlayers()) do
 		if isEnemy(plr) and isAlive(plr) then
 			local head = plr.Character and plr.Character:FindFirstChild("Head")
 			if head then
-				local d = (Camera.CFrame.Position - head.Position).Magnitude
-				if d < dist then
-					dist = d
-					closest = head
-				end
+				table.insert(enemyList, plr)
 			end
 		end
 	end
-	return closest
+
+	table.sort(enemyList, function(a, b)
+		return
+			(Camera.CFrame.Position - a.Character.Head.Position).Magnitude <
+			(Camera.CFrame.Position - b.Character.Head.Position).Magnitude
+	end)
+
+	if currentIndex > #enemyList then
+		currentIndex = 1
+	end
 end
 
 --------------------------------------------------
 -- XRAY
 --------------------------------------------------
-local function createHighlight(player)
-	if highlights[player] or not player.Character then return end
-	local h = Instance.new("Highlight")
-	h.Adornee = player.Character
-	h.FillTransparency = 0.5
-	h.OutlineTransparency = 0
-	h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-	h.FillColor = Color3.fromRGB(255,0,0)
-	h.Parent = Camera
-	highlights[player] = h
-end
-
-local function removeHighlight(player)
-	if highlights[player] then
-		highlights[player]:Destroy()
-		highlights[player] = nil
-	end
-end
-
---------------------------------------------------
--- NOCLIP
---------------------------------------------------
-local function applyNoclip()
-	local char = LocalPlayer.Character
-	if not char then return end
-	for _, v in ipairs(char:GetDescendants()) do
-		if v:IsA("BasePart") then
-			v.CanCollide = not noclipEnabled
+local function applyXray()
+	if not xrayEnabled then
+		for p in pairs(highlights) do
+			highlights[p]:Destroy()
+			highlights[p] = nil
 		end
-	end
-end
-
---------------------------------------------------
--- FLY
---------------------------------------------------
-local function enableFly(enable)
-	local char = LocalPlayer.Character
-	if not char then return end
-	local hrp = char:FindFirstChild("HumanoidRootPart")
-	local hum = char:FindFirstChildOfClass("Humanoid")
-	if not hrp or not hum then return end
-
-	if not enable then
-		if bodyVelocity then bodyVelocity:Destroy() end
-		if bodyGyro then bodyGyro:Destroy() end
-		bodyVelocity, bodyGyro = nil, nil
-		hum.PlatformStand = false
 		return
 	end
 
-	bodyVelocity = Instance.new("BodyVelocity")
-	bodyVelocity.MaxForce = Vector3.new(1e9,1e9,1e9)
-	bodyVelocity.Parent = hrp
-
-	bodyGyro = Instance.new("BodyGyro")
-	bodyGyro.MaxTorque = Vector3.new(1e9,1e9,1e9)
-	bodyGyro.Parent = hrp
-
-	hum.PlatformStand = true
+	for _, plr in ipairs(enemyList) do
+		if not highlights[plr] then
+			local h = Instance.new("Highlight")
+			h.Adornee = plr.Character
+			h.FillTransparency = 0.5
+			h.OutlineTransparency = 0
+			h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+			h.FillColor = Color3.fromRGB(255,0,0)
+			h.Parent = Camera
+			highlights[plr] = h
+		end
+	end
 end
 
 --------------------------------------------------
--- MAIN LOOP
+-- WALK / JUMP HACK (RETICK)
 --------------------------------------------------
-RunService.RenderStepped:Connect(function()
-	-- XRAY
-	if xrayEnabled then
-		for _, plr in ipairs(Players:GetPlayers()) do
-			if isEnemy(plr) and isAlive(plr) then
-				createHighlight(plr)
-			else
-				removeHighlight(plr)
-			end
-		end
-	else
-		for plr in pairs(highlights) do
-			removeHighlight(plr)
-		end
+local function applyMovementHacks()
+	local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+	if not hum then return end
+
+	if walkHackEnabled then
+		hum.WalkSpeed = SPEEDS.WalkingSpeed
 	end
 
-	-- NOCLIP
-	applyNoclip()
-
-	-- AIMBOT
-	if aimbotEnabled then
-		local head = getNearestEnemyHead()
-		if head then
-			Camera.CFrame = CFrame.new(Camera.CFrame.Position, head.Position)
-		end
+	if jumpHackEnabled then
+		hum.JumpHeight = SPEEDS.JumpHeight
+		hum.UseJumpPower = false
 	end
+end
 
-	-- FLY MOVEMENT
-	if flyEnabled then
-		if not bodyVelocity then enableFly(true) end
-		local cam = Camera
+--------------------------------------------------
+-- INFINITE JUMP
+--------------------------------------------------
+UserInputService.JumpRequest:Connect(function()
+	if infiniteJumpEnabled then
 		local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-		if cam and hum and bodyVelocity and bodyGyro then
-			bodyVelocity.Velocity =
-				(cam.CFrame.LookVector * hum.MoveDirection.Z +
-				cam.CFrame.RightVector * hum.MoveDirection.X) * SPEEDS.FlyingSpeed
-			bodyGyro.CFrame = cam.CFrame
+		if hum then
+			hum:ChangeState(Enum.HumanoidStateType.Jumping)
 		end
-	else
-		if bodyVelocity or bodyGyro then enableFly(false) end
 	end
 end)
 
 --------------------------------------------------
--- CLEANUP
+-- MAIN LOOP
 --------------------------------------------------
-Players.PlayerRemoving:Connect(removeHighlight)
+RunService.RenderStepped:Connect(function(dt)
+	lastEnemyUpdate += dt
+	if lastEnemyUpdate >= 0.1 then
+		lastEnemyUpdate = 0
+		updateEnemies()
+		applyXray()
+		applyMovementHacks()
+	end
+
+	-- AIMBOT
+	if aimbotEnabled then
+		local target = enemyList[currentIndex]
+		if target and target.Character and target.Character:FindFirstChild("Head") then
+			Camera.CFrame = CFrame.new(Camera.CFrame.Position, target.Character.Head.Position)
+		end
+	end
+end)
