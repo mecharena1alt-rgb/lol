@@ -148,7 +148,7 @@ end
 -- XRAY (RE-APPLIED EVERY 0.1s)
 --------------------------------------------------
 local function applyXray()
-	-- X-ray OFF → hard reset
+	-- If X-ray is OFF → hard reset
 	if not ENABLED("X-rayBTN") then
 		for p, h in pairs(highlights) do
 			h:Destroy()
@@ -157,20 +157,25 @@ local function applyXray()
 		return
 	end
 
+	-- Remove highlights for players that are no longer enemies
+	for p, h in pairs(highlights) do
+		if not table.find(enemies, p) then
+			h:Destroy()
+			highlights[p] = nil
+		end
+	end
+
+	-- Force-refresh highlights for ALL enemies
 	for _, p in ipairs(enemies) do
 		local char = p.Character
-		if not char then
-			clearHighlight(p)
-			continue
-		end
 
-		-- character changed / died / respawned
-		if highlights[p] and highlights[p].Adornee ~= char then
+		-- character missing or changed → reset
+		if not char or (highlights[p] and highlights[p].Adornee ~= char) then
 			clearHighlight(p)
 		end
 
-		-- create highlight if missing
-		if not highlights[p] then
+		-- recreate highlight if missing
+		if char and not highlights[p] then
 			local h = Instance.new("Highlight")
 			h.Adornee = char
 			h.FillTransparency = 0.5
