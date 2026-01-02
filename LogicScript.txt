@@ -47,6 +47,30 @@ local function isEnemy(p)
 end
 
 
+local function clearHighlight(p)
+	if highlights[p] then
+		highlights[p]:Destroy()
+		highlights[p] = nil
+	end
+end
+
+
+for _, p in ipairs(Players:GetPlayers()) do
+	if p ~= LocalPlayer then
+		p.CharacterAdded:Connect(function()
+			clearHighlight(p)
+		end)
+	end
+end
+
+Players.PlayerAdded:Connect(function(p)
+	if p ~= LocalPlayer then
+		p.CharacterAdded:Connect(function()
+			clearHighlight(p)
+		end)
+	end
+end)
+
 
 
 UserInputService.InputBegan:Connect(function(input, gp)
@@ -124,18 +148,31 @@ end
 -- XRAY (RE-APPLIED EVERY 0.1s)
 --------------------------------------------------
 local function applyXray()
+	-- X-ray OFF → hard reset
 	if not ENABLED("X-rayBTN") then
-		for _, h in pairs(highlights) do
+		for p, h in pairs(highlights) do
 			h:Destroy()
+			highlights[p] = nil
 		end
-		table.clear(highlights)
 		return
 	end
 
 	for _, p in ipairs(enemies) do
+		local char = p.Character
+		if not char then
+			clearHighlight(p)
+			continue
+		end
+
+		-- character changed / died / respawned
+		if highlights[p] and highlights[p].Adornee ~= char then
+			clearHighlight(p)
+		end
+
+		-- create highlight if missing
 		if not highlights[p] then
 			local h = Instance.new("Highlight")
-			h.Adornee = p.Character
+			h.Adornee = char
 			h.FillTransparency = 0.5
 			h.OutlineTransparency = 0
 			h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
@@ -145,6 +182,7 @@ local function applyXray()
 		end
 	end
 end
+
 
 --------------------------------------------------
 -- TRUE NOCLIP
