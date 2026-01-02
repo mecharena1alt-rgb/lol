@@ -24,6 +24,16 @@ local function ENABLED(name)
 	return b and b:GetAttribute("Enabled") == true
 end
 
+local function TEXTBOX(name)
+	return frame:WaitForChild(name)
+end
+
+local function VALUE(name, fallback)
+	local tb = TEXTBOX(name)
+	return tb and tb:GetAttribute("Value") or fallback
+end
+
+
 local function TOGGLE(name)
 	local b = BTN(name)
 	if b then
@@ -31,40 +41,11 @@ local function TOGGLE(name)
 	end
 end
 
-local function TEXTBOX(name)
-	return frame:WaitForChild(name)
-end
 
 
-local function VALUE(name, fallback)
-	local tb = TEXTBOX(name)
-	if tb then
-		return tb:GetAttribute("Value") or fallback
-	end
-	return fallback
-end
 
---------------------------------------------------
--- VISUAL SYNC
---------------------------------------------------
-local ENABLED_COLOR  = Color3.fromRGB(17,17,17)
-local DISABLED_COLOR = Color3.fromRGB(34,34,34)
 
-for _, obj in ipairs(frame:GetChildren()) do
-	if obj:IsA("TextButton") then
-		local function sync()
-			obj.BackgroundColor3 =
-				(obj:GetAttribute("Enabled") == true)
-				and ENABLED_COLOR or DISABLED_COLOR
-		end
-		sync()
-		obj:GetAttributeChangedSignal("Enabled"):Connect(sync)
-	end
-end
 
---------------------------------------------------
--- HOTKEYS
---------------------------------------------------
 UserInputService.InputBegan:Connect(function(input, gp)
 	if gp then return end
 
@@ -79,16 +60,6 @@ UserInputService.InputBegan:Connect(function(input, gp)
 	end
 end)
 
---------------------------------------------------
--- STATE
---------------------------------------------------
-local enemyList = {}
-local currentIndex = 1
-local tickTimer = 0
-
-local highlights = {}
-local bodyVelocity, bodyGyro
-local defaults = {}
 
 --------------------------------------------------
 -- CHARACTER HELPERS
@@ -106,10 +77,21 @@ local function HRP()
 end
 
 --------------------------------------------------
--- ENEMY SCAN
+-- STATE
+--------------------------------------------------
+local enemies = {}
+local currentIndex = 1
+local tickTimer = 0
+
+local highlights = {}
+local bodyVelocity, bodyGyro
+local defaults = {}
+
+--------------------------------------------------
+-- ENEMY SCAN (SORTED BY DISTANCE)
 --------------------------------------------------
 local function updateEnemies()
-	table.clear(enemyList)
+	table.clear(enemies)
 
 	for _, p in ipairs(Players:GetPlayers()) do
 		if p ~= LocalPlayer
@@ -118,40 +100,42 @@ local function updateEnemies()
 
 			local h = p.Character:FindFirstChildOfClass("Humanoid")
 			if h and h.Health > 0 then
-				table.insert(enemyList, p)
+				table.insert(enemies, p)
 			end
 		end
 	end
 
-	table.sort(enemyList, function(a, b)
+	table.sort(enemies, function(a, b)
 		return
 			(Camera.CFrame.Position - a.Character.Head.Position).Magnitude <
 			(Camera.CFrame.Position - b.Character.Head.Position).Magnitude
 	end)
 
-	if currentIndex > #enemyList then
+	if currentIndex > #enemies then
 		currentIndex = 1
 	end
 end
 
 --------------------------------------------------
--- XRAY
+-- XRAY (RE-APPLIED EVERY 0.1s)
 --------------------------------------------------
 local function applyXray()
 	if not ENABLED("X-rayBTN") then
-		for _, h in pairs(highlights) do h:Destroy() end
+		for _, h in pairs(highlights) do
+			h:Destroy()
+		end
 		table.clear(highlights)
 		return
 	end
 
-	for _, p in ipairs(enemyList) do
+	for _, p in ipairs(enemies) do
 		if not highlights[p] then
 			local h = Instance.new("Highlight")
 			h.Adornee = p.Character
 			h.FillTransparency = 0.5
 			h.OutlineTransparency = 0
 			h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-			h.FillColor = Color3.fromRGB(255,0,0)
+			h.FillColor = Color3.fromRGB(255, 0, 0)
 			h.Parent = Camera
 			highlights[p] = h
 		end
@@ -182,11 +166,8 @@ local function updateFly()
 	if not ENABLED("Fly speedBTN") then
 		if bodyVelocity then bodyVelocity:Destroy() bodyVelocity = nil end
 		if bodyGyro then bodyGyro:Destroy() bodyGyro = nil end
-
 		local hum = HUM()
-		if hum then
-			hum.PlatformStand = false
-		end
+		if hum then hum.PlatformStand = false end
 		return
 	end
 
@@ -194,13 +175,11 @@ local function updateFly()
 	local hum = HUM()
 	if not hrp or not hum then return end
 
-	-- prevent humanoid physics fighting fly
 	hum.PlatformStand = true
 
 	if not bodyVelocity then
 		bodyVelocity = Instance.new("BodyVelocity")
 		bodyVelocity.MaxForce = Vector3.new(1e9, 1e9, 1e9)
-		bodyVelocity.Velocity = Vector3.zero
 		bodyVelocity.Parent = hrp
 
 		bodyGyro = Instance.new("BodyGyro")
@@ -209,43 +188,27 @@ local function updateFly()
 		bodyGyro.Parent = hrp
 	end
 
-	local camCF = Camera.CFrame
+	local cam = Camera.CFrame
 	local move = Vector3.zero
-	local flySpeed = VALUE("TEXTBOX3", 80)
+	local speed = VALUE("TEXTBOX3", 80)
 
-	-- WASD (camera-relative)
-	if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-		move += camCF.LookVector
-	end
-	if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-		move -= camCF.LookVector
-	end
-	if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-		move -= camCF.RightVector
-	end
-	if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-		move += camCF.RightVector
-	end
-
-	-- vertical
-	if UserInputService:IsKeyDown(Enum.KeyCode.E) then
-		move += camCF.UpVector
-	end
-	if UserInputService:IsKeyDown(Enum.KeyCode.Q) then
-		move -= camCF.UpVector
-	end
+	if UserInputService:IsKeyDown(Enum.KeyCode.W) then move += cam.LookVector end
+	if UserInputService:IsKeyDown(Enum.KeyCode.S) then move -= cam.LookVector end
+	if UserInputService:IsKeyDown(Enum.KeyCode.A) then move -= cam.RightVector end
+	if UserInputService:IsKeyDown(Enum.KeyCode.D) then move += cam.RightVector end
+	if UserInputService:IsKeyDown(Enum.KeyCode.E) then move += cam.UpVector end
+	if UserInputService:IsKeyDown(Enum.KeyCode.Q) then move -= cam.UpVector end
 
 	if move.Magnitude > 0 then
-		move = move.Unit * flySpeed
+		move = move.Unit * speed
 	end
 
 	bodyVelocity.Velocity = move
-	bodyGyro.CFrame = camCF
+	bodyGyro.CFrame = cam
 end
 
-
 --------------------------------------------------
--- MOVEMENT (TEXTBOX1 / TEXTBOX2)
+-- MOVEMENT (RE-APPLIED EVERY FRAME)
 --------------------------------------------------
 local function applyMovement()
 	local hum = HUM()
@@ -265,7 +228,6 @@ local function applyMovement()
 	end
 end
 
-
 --------------------------------------------------
 -- INFINITE JUMP
 --------------------------------------------------
@@ -279,11 +241,11 @@ UserInputService.JumpRequest:Connect(function()
 end)
 
 --------------------------------------------------
--- AIMBOT
+-- AIMBOT (CLOSEST TARGET EVERY 0.1s)
 --------------------------------------------------
 local function applyAimbot()
 	if not ENABLED("AimbotBTN") then return end
-	local target = enemyList[currentIndex]
+	local target = enemies[1]
 	if target then
 		Camera.CFrame = CFrame.new(
 			Camera.CFrame.Position,
@@ -293,34 +255,38 @@ local function applyAimbot()
 end
 
 --------------------------------------------------
--- TP TO PLAYER
+-- TP TO PLAYER (CYCLE THROUGH ALL)
 --------------------------------------------------
 local function tpToPlayer()
 	if not ENABLED("TP to playerBTN") then return end
+	if #enemies == 0 then return end
+
+	currentIndex += 1
+	if currentIndex > #enemies then
+		currentIndex = 1
+	end
+
 	local hrp = HRP()
-	local target = enemyList[currentIndex]
+	local target = enemies[currentIndex]
 	if hrp and target and target.Character:FindFirstChild("HumanoidRootPart") then
 		hrp.CFrame =
-			target.Character.HumanoidRootPart.CFrame + Vector3.new(0,3,0)
+			target.Character.HumanoidRootPart.CFrame + Vector3.new(0, 3, 0)
 	end
 end
 
 --------------------------------------------------
--- RESPAWN HANDLER (VALUES AUTO-REAPPLY)
+-- RESPAWN HANDLER
 --------------------------------------------------
 LocalPlayer.CharacterAdded:Connect(function(char)
 	local hum = char:WaitForChild("Humanoid")
-
 	defaults.WalkSpeed = hum.WalkSpeed
 	defaults.JumpHeight = hum.JumpHeight
-
 	bodyVelocity = nil
 	bodyGyro = nil
 end)
 
-
 --------------------------------------------------
--- MAIN LOOP
+-- MAIN LOOP (0.1s TICK GUARANTEED)
 --------------------------------------------------
 RunService.RenderStepped:Connect(function(dt)
 	tickTimer += dt
