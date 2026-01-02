@@ -42,6 +42,9 @@ local function TOGGLE(name)
 end
 
 
+local function isEnemy(p)
+	return p ~= LocalPlayer and p.Team ~= LocalPlayer.Team
+end
 
 
 
@@ -94,7 +97,7 @@ local function updateEnemies()
 	table.clear(enemies)
 
 	for _, p in ipairs(Players:GetPlayers()) do
-		if p ~= LocalPlayer
+		if isEnemy(p)
 			and p.Character
 			and p.Character:FindFirstChild("Head") then
 
@@ -115,6 +118,7 @@ local function updateEnemies()
 		currentIndex = 1
 	end
 end
+
 
 --------------------------------------------------
 -- XRAY (RE-APPLIED EVERY 0.1s)
