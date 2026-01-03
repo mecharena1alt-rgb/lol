@@ -6,6 +6,7 @@ local Camera = workspace.CurrentCamera
 
 local LocalPlayer = Players.LocalPlayer
 
+
 --------------------------------------------------
 -- GUI (SINGLE SOURCE OF TRUTH)
 --------------------------------------------------
@@ -71,30 +72,7 @@ Players.PlayerAdded:Connect(function(p)
 	end
 end)
 
-
-
-UserInputService.InputBegan:Connect(function(input, gp)
-	if gp then return end
-
-	if input.KeyCode == Enum.KeyCode.G then TOGGLE("AimbotBTN")
-	elseif input.KeyCode == Enum.KeyCode.H then TOGGLE("X-rayBTN")
-	elseif input.KeyCode == Enum.KeyCode.N then TOGGLE("No clipBTN")
-	elseif input.KeyCode == Enum.KeyCode.F then TOGGLE("Fly speedBTN")
-	elseif input.KeyCode == Enum.KeyCode.J then TOGGLE("SpeedBTN")
-	elseif input.KeyCode == Enum.KeyCode.K then TOGGLE("Jump heightBTN")
-	elseif input.KeyCode == Enum.KeyCode.L then TOGGLE("INF jumpBTN")
-	elseif input.KeyCode == Enum.KeyCode.U then TOGGLE("TP to playerBTN")
-	elseif input.KeyCode == Enum.KeyCode.V then
-	cycleAimbot = not cycleAimbot
-	currentIndex = 1
-end
-
-
-
-end)
-
-
-
+local cycleAimbot = false
 
 --------------------------------------------------
 -- GUI VISUAL SYNC (HOTKEY <-> GUI)
@@ -119,6 +97,28 @@ for _, obj in ipairs(frame:GetChildren()) do
 	end
 end
 
+
+
+
+UserInputService.InputBegan:Connect(function(input, gp)
+	if gp then return end
+
+	if input.KeyCode == Enum.KeyCode.G then TOGGLE("AimbotBTN")
+	elseif input.KeyCode == Enum.KeyCode.H then TOGGLE("X-rayBTN")
+	elseif input.KeyCode == Enum.KeyCode.N then TOGGLE("No clipBTN")
+	elseif input.KeyCode == Enum.KeyCode.F then TOGGLE("Fly speedBTN")
+	elseif input.KeyCode == Enum.KeyCode.J then TOGGLE("SpeedBTN")
+	elseif input.KeyCode == Enum.KeyCode.K then TOGGLE("Jump heightBTN")
+	elseif input.KeyCode == Enum.KeyCode.L then TOGGLE("INF jumpBTN")
+	elseif input.KeyCode == Enum.KeyCode.U then TOGGLE("TP to playerBTN")
+	elseif input.KeyCode == Enum.KeyCode.V then
+	cycleAimbot = not cycleAimbot
+	currentIndex = 1
+end
+
+
+
+end)
 
 
 
@@ -147,8 +147,6 @@ local tickTimer = 0
 local highlights = {}
 local bodyVelocity, bodyGyro
 local defaults = {}
-
-local cycleAimbot = false
 
 
 --------------------------------------------------

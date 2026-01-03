@@ -19,10 +19,11 @@ local DEFAULT_ENABLED = {
 	["X-rayBTN"] = true,
 	["INF jumpBTN"] = true,
 	["SpeedBTN"] = true,
+	["Jump heightBTN"] = true,
 }
 
 local DEFAULT_STATS = {
-	["TEXTBOX1"] = 50,
+	["TEXTBOX1"] = 5,
 	["TEXTBOX2"] = 50,
 	["TEXTBOX3"] = 150,
 }
