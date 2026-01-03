@@ -83,8 +83,14 @@ UserInputService.InputBegan:Connect(function(input, gp)
 	elseif input.KeyCode == Enum.KeyCode.J then TOGGLE("SpeedBTN")
 	elseif input.KeyCode == Enum.KeyCode.K then TOGGLE("Jump heightBTN")
 	elseif input.KeyCode == Enum.KeyCode.L then TOGGLE("INF jumpBTN")
-	elseif input.KeyCode == Enum.KeyCode.Y then TOGGLE("TP to playerBTN")
-	end
+	elseif input.KeyCode == Enum.KeyCode.U then TOGGLE("TP to playerBTN")
+	elseif input.KeyCode == Enum.KeyCode.V then
+	cycleAimbot = not cycleAimbot
+	currentIndex = 1
+end
+
+
+
 end)
 
 
@@ -113,6 +119,9 @@ local tickTimer = 0
 local highlights = {}
 local bodyVelocity, bodyGyro
 local defaults = {}
+
+local cycleAimbot = false
+
 
 --------------------------------------------------
 -- ENEMY SCAN (SORTED BY DISTANCE)
@@ -279,14 +288,23 @@ end)
 --------------------------------------------------
 local function applyAimbot()
 	if not ENABLED("AimbotBTN") then return end
-	local target = enemies[1]
-	if target then
+	if #enemies == 0 then return end
+
+	local target
+	if cycleAimbot then
+		target = enemies[currentIndex]
+	else
+		target = enemies[1] -- closest
+	end
+
+	if target and target.Character and target.Character:FindFirstChild("Head") then
 		Camera.CFrame = CFrame.new(
 			Camera.CFrame.Position,
 			target.Character.Head.Position
 		)
 	end
 end
+
 
 --------------------------------------------------
 -- TP TO PLAYER (CYCLE THROUGH ALL)
@@ -325,12 +343,21 @@ end)
 RunService.RenderStepped:Connect(function(dt)
 	tickTimer += dt
 
-	if tickTimer >= 0.1 then
-		tickTimer = 0
-		updateEnemies()
-		applyXray()
-		tpToPlayer()
+if tickTimer >= 0.1 then
+	tickTimer = 0
+	updateEnemies()
+	applyXray()
+
+	if cycleAimbot and #enemies > 0 then
+		currentIndex += 1
+		if currentIndex > #enemies then
+			currentIndex = 1
+		end
 	end
+
+	tpToPlayer()
+end
+
 
 	applyNoclip()
 	updateFly()
