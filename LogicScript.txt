@@ -94,6 +94,34 @@ end
 end)
 
 
+
+
+--------------------------------------------------
+-- GUI VISUAL SYNC (HOTKEY <-> GUI)
+--------------------------------------------------
+local ENABLED_COLOR  = Color3.fromRGB(17, 17, 17)
+local DISABLED_COLOR = Color3.fromRGB(34, 34, 34)
+
+for _, obj in ipairs(frame:GetChildren()) do
+	if obj:IsA("TextButton") then
+		local function sync()
+			obj.BackgroundColor3 =
+				(obj:GetAttribute("Enabled") == true)
+				and ENABLED_COLOR
+				or DISABLED_COLOR
+		end
+
+		-- initial sync
+		sync()
+
+		-- live sync when hotkeys toggle
+		obj:GetAttributeChangedSignal("Enabled"):Connect(sync)
+	end
+end
+
+
+
+
 --------------------------------------------------
 -- CHARACTER HELPERS
 --------------------------------------------------
