@@ -22,9 +22,9 @@ local DEFAULT_ENABLED = {
 }
 
 local DEFAULT_STATS = {
-	["TEXTBOX1"] = 44,
-	["TEXTBOX2"] = 44,
-	["TEXTBOX3"] = 111,
+	["TEXTBOX1"] = 50,
+	["TEXTBOX2"] = 50,
+	["TEXTBOX3"] = 150,
 }
 
 
