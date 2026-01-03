@@ -148,46 +148,33 @@ end
 -- XRAY (RE-APPLIED EVERY 0.1s)
 --------------------------------------------------
 local function applyXray()
-	-- If X-ray is OFF → hard reset
-	if not ENABLED("X-rayBTN") then
-		for p, h in pairs(highlights) do
+	-- always wipe old highlights
+	for _, h in pairs(highlights) do
+		if h then
 			h:Destroy()
-			highlights[p] = nil
 		end
+	end
+	table.clear(highlights)
+
+	if not ENABLED("X-rayBTN") then
 		return
 	end
 
-	-- Remove highlights for players that are no longer enemies
-	for p, h in pairs(highlights) do
-		if not table.find(enemies, p) then
-			h:Destroy()
-			highlights[p] = nil
-		end
-	end
-
-	-- Force-refresh highlights for ALL enemies
+	-- recreate highlights every tick
 	for _, p in ipairs(enemies) do
-		local char = p.Character
-
-		-- character missing or changed → reset
-		if not char or (highlights[p] and highlights[p].Adornee ~= char) then
-			clearHighlight(p)
-		end
-
-		-- recreate highlight if missing
-		if char and not highlights[p] then
+		if p.Character then
 			local h = Instance.new("Highlight")
-			h.Adornee = char
+			h.Adornee = p.Character
 			h.FillTransparency = 0.5
 			h.OutlineTransparency = 0
 			h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 			h.FillColor = Color3.fromRGB(255, 0, 0)
 			h.Parent = Camera
+
 			highlights[p] = h
 		end
 	end
 end
-
 
 --------------------------------------------------
 -- TRUE NOCLIP
