@@ -3,6 +3,8 @@
 
 local Players = game:GetService("Players")
 local player = Players.LocalPlayer
+local UIS = game:GetService("UserInputService")
+
 
 --------------------------------------------------
 -- SCREEN GUI
@@ -32,6 +34,11 @@ local DEFAULT_STATS = {
 -- small X visual offset
 local SMALLXOFFSET = Vector2.new(0, -29)
 
+local FULL_BAR_Y_OFFSET = 200 + 10   -- half of 400 + padding
+local MINI_BAR_Y_OFFSET = 0         -- just under the mini menu
+
+
+
 --------------------------------------------------
 -- MAIN FRAME
 --------------------------------------------------
@@ -42,6 +49,25 @@ frame.Position = UDim2.fromScale(0.5,0.5)
 frame.AnchorPoint = Vector2.new(0.5,0.5)
 frame.BackgroundColor3 = Color3.fromRGB(34,34,34)
 frame.BorderSizePixel = 0
+
+
+--------------------------------------------------
+-- MOVE BAR (FULL)
+--------------------------------------------------
+local moveBarFull = Instance.new("Frame")
+moveBarFull.Active = true
+moveBarFull.Name = "MoveBarFull"
+moveBarFull.Parent = gui
+moveBarFull.AnchorPoint = Vector2.new(0.5, 0.5)
+moveBarFull.Size = UDim2.new(0,150,0,10)
+moveBarFull.BackgroundColor3 = Color3.fromRGB(255,255,255)
+moveBarFull.BackgroundTransparency = 0.69
+moveBarFull.BorderSizePixel = 0
+
+local fullCorner = Instance.new("UICorner", moveBarFull)
+fullCorner.CornerRadius = UDim.new(1,0)
+
+
 
 --------------------------------------------------
 -- SECOND FRAME
@@ -55,8 +81,54 @@ frame2.BackgroundTransparency = 1
 frame2.Visible = false
 
 --------------------------------------------------
+-- MOVE BAR (COLLAPSED)
+--------------------------------------------------
+local moveBarMini = Instance.new("Frame")
+moveBarMini.Visible = false
+moveBarMini.Active = true
+moveBarMini.Name = "MoveBarMini"
+moveBarMini.Parent = gui
+moveBarMini.AnchorPoint = Vector2.new(0.5, 0.5)
+moveBarMini.Size = UDim2.new(0,50,0,5)
+moveBarMini.BackgroundColor3 = Color3.fromRGB(255,255,255)
+moveBarMini.BackgroundTransparency = 0.69
+moveBarMini.BorderSizePixel = 0
+
+local miniCorner = Instance.new("UICorner", moveBarMini)
+miniCorner.CornerRadius = UDim.new(1,0)
+
+--------------------------------------------------
+-- MOVE STATE (INIT AFTER FRAME EXISTS)
+--------------------------------------------------
+local savedPosition = frame.Position
+local isDragging = false
+local dragStartMouse
+local dragStartPos
+
+
+--------------------------------------------------
 -- HELPERS
 --------------------------------------------------
+
+local function updateBars()
+	moveBarFull.Position = UDim2.new(
+		0.5,
+		savedPosition.X.Offset,
+		0.5,
+		savedPosition.Y.Offset + FULL_BAR_Y_OFFSET
+	)
+
+	moveBarMini.Position = UDim2.new(
+		0.5,
+		savedPosition.X.Offset,
+		0.5,
+		savedPosition.Y.Offset + MINI_BAR_Y_OFFSET
+	)
+end
+
+updateBars()
+
+
 local function makeButton(name, text, size, pos, parent, bg)
 	local b = Instance.new("TextButton")
 	b.Name = name
@@ -78,6 +150,97 @@ local function setToggle(btn, value)
 		and Color3.fromRGB(17,17,17)
 		or Color3.fromRGB(34,34,34)
 end
+
+
+
+
+--------------------------------------------------
+-- MOVE BAR VISUAL STATES
+--------------------------------------------------
+local function setBarVisual(bar, mode, state)
+	if mode == "full" then
+		if state == "idle" then
+			bar.Size = UDim2.new(0,150,0,10)
+			bar.BackgroundTransparency = 0.69
+		elseif state == "hover" then
+			bar.Size = UDim2.new(0,200,0,10)
+			bar.BackgroundTransparency = 0.6
+		elseif state == "drag" then
+			bar.Size = UDim2.new(0,175,0,10)
+			bar.BackgroundTransparency = 0.3
+		end
+	else
+		if state == "idle" then
+			bar.Size = UDim2.new(0,50,0,5)
+			bar.BackgroundTransparency = 0.69
+		elseif state == "hover" then
+			bar.Size = UDim2.new(0,100,0,5)
+			bar.BackgroundTransparency = 0.6
+		elseif state == "drag" then
+			bar.Size = UDim2.new(0,75,0,5)
+			bar.BackgroundTransparency = 0.3
+		end
+	end
+end
+
+--------------------------------------------------
+-- DRAG HANDLER
+--------------------------------------------------
+local function enableDragging(bar, mode)
+	bar.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			isDragging = true
+			dragStartMouse = input.Position
+			dragStartPos = savedPosition
+			setBarVisual(bar, mode, "drag")
+		end
+	end)
+
+	bar.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			isDragging = false
+			setBarVisual(bar, mode, "idle")
+		end
+	end)
+
+	bar.MouseEnter:Connect(function()
+		if not isDragging then
+			setBarVisual(bar, mode, "hover")
+		end
+	end)
+
+	bar.MouseLeave:Connect(function()
+		if not isDragging then
+			setBarVisual(bar, mode, "idle")
+		end
+	end)
+end
+
+UIS.InputChanged:Connect(function(input)
+	if isDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+		local delta = input.Position - dragStartMouse
+
+		savedPosition = UDim2.new(
+			dragStartPos.X.Scale,
+			dragStartPos.X.Offset + delta.X,
+			dragStartPos.Y.Scale,
+			dragStartPos.Y.Offset + delta.Y
+		)
+
+		frame.Position = savedPosition
+		frame2.Position = savedPosition
+		updateBars()
+	end
+end)
+
+
+
+enableDragging(moveBarFull, "full")
+enableDragging(moveBarMini, "mini")
+
+
+
+
 
 --------------------------------------------------
 -- LEFT BUTTONS
@@ -126,9 +289,15 @@ local XBTN = makeButton(
 XBTN.Font = Enum.Font.GothamBold
 
 XBTN.MouseButton1Click:Connect(function()
+	savedPosition = frame.Position
 	frame.Visible = false
+	frame2.Position = savedPosition
 	frame2.Visible = true
+	setBarVisual(moveBarMini, "mini", "idle")
+	moveBarFull.Visible = false
+	moveBarMini.Visible = true
 end)
+
 
 --------------------------------------------------
 -- TEXT BOXES (STATS)
@@ -226,6 +395,10 @@ XLabel.Font = Enum.Font.GothamBold
 XLabel.TextSize = 14
 
 smallxBTN.MouseButton1Click:Connect(function()
-	frame.Visible = true
 	frame2.Visible = false
+	frame.Position = savedPosition
+	frame.Visible = true
+	setBarVisual(moveBarFull, "full", "idle")
+	moveBarMini.Visible = false
+	moveBarFull.Visible = true
 end)
