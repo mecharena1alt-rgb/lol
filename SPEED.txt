@@ -1,0 +1,155 @@
+--// SERVICES
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+
+
+--// FIND AbilityConfig MODULE
+local function findModule()
+	local rs = game:GetService("ReplicatedStorage")
+	if rs:FindFirstChild("Modules") and rs.Modules:FindFirstChild("AbilityConfig") then
+		return rs.Modules.AbilityConfig
+	end
+	return rs:FindFirstChild("AbilityConfig", true)
+end
+
+local configScript = findModule()
+if not configScript then
+	warn("AbilityConfig not found")
+	return
+end
+
+local config = require(configScript)
+
+--// SAVE ORIGINAL VALUES
+local original = {
+	SprintBoost = config.SprintBoost,
+	SprintTime = config.SprintTime,
+	SprintCooldown = config.SprintCooldown,
+	DashCooldown = config.DashCooldown,
+	DashTime = config.DashActivatedTime
+}
+
+--// STATE
+local sprintEnabled = false
+local dashEnabled = false
+local sprintBoostValue = 7
+local dashDurationValue = 9999
+
+--// UI
+local gui = Instance.new("ScreenGui")
+gui.Name = "AdminAbilityUI"
+gui.ResetOnSpawn = false
+gui.Parent = player.PlayerGui
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.fromScale(0.25, 0.32)
+frame.Position = UDim2.fromScale(0.375, 0.34)
+frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
+frame.Active = true
+frame.Draggable = true
+frame.Parent = gui
+
+Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 12)
+
+-- TITLE
+local title = Instance.new("TextLabel")
+title.Text = "ADMIN ABILITIES"
+title.Size = UDim2.fromScale(1, 0.18)
+title.BackgroundTransparency = 1
+title.TextColor3 = Color3.new(1,1,1)
+title.Font = Enum.Font.GothamBold
+title.TextScaled = true
+title.Parent = frame
+
+-- TEXTBOX CREATOR
+local function makeBox(text, pos)
+	local box = Instance.new("TextBox")
+	box.Size = UDim2.fromScale(0.8, 0.14)
+	box.Position = pos
+	box.Text = text
+	box.ClearTextOnFocus = false
+	box.Font = Enum.Font.Gotham
+	box.TextScaled = true
+	box.BackgroundColor3 = Color3.fromRGB(45,45,45)
+	box.TextColor3 = Color3.new(1,1,1)
+	Instance.new("UICorner", box).CornerRadius = UDim.new(0,8)
+	box.Parent = frame
+	return box
+end
+
+-- BUTTON CREATOR
+local function makeButton(text, pos)
+	local b = Instance.new("TextButton")
+	b.Size = UDim2.fromScale(0.8, 0.14)
+	b.Position = pos
+	b.Text = text
+	b.Font = Enum.Font.Gotham
+	b.TextScaled = true
+	b.BackgroundColor3 = Color3.fromRGB(60,60,60)
+	b.TextColor3 = Color3.new(1,1,1)
+	Instance.new("UICorner", b).CornerRadius = UDim.new(0,8)
+	b.Parent = frame
+	return b
+end
+
+-- SPRINT UI
+local sprintBox = makeBox("7", UDim2.fromScale(0.1, 0.22))
+sprintBox.PlaceholderText = "Sprint Boost"
+
+local sprintBtn = makeButton("Sprint: OFF", UDim2.fromScale(0.1, 0.38))
+
+-- DASH UI
+local dashBox = makeBox("9999", UDim2.fromScale(0.1, 0.56))
+dashBox.PlaceholderText = "Dash Duration"
+
+local dashBtn = makeButton("Dash: OFF", UDim2.fromScale(0.1, 0.72))
+
+-- VALIDATION
+local function validateBox(box, current, min, max)
+	box.FocusLost:Connect(function()
+		local num = tonumber(box.Text)
+		if num then
+			current.value = math.clamp(num, min, max)
+			box.Text = tostring(current.value)
+		else
+			box.Text = tostring(current.value)
+		end
+	end)
+end
+
+validateBox(sprintBox, {value = sprintBoostValue}, 1, 50)
+validateBox(dashBox, {value = dashDurationValue}, 0.1, 9999)
+
+-- SPRINT TOGGLE
+sprintBtn.MouseButton1Click:Connect(function()
+	sprintEnabled = not sprintEnabled
+	if sprintEnabled then
+		sprintBoostValue = tonumber(sprintBox.Text) or sprintBoostValue
+		config.SprintBoost = sprintBoostValue
+		config.SprintTime = 9999
+		config.SprintCooldown = 0
+		sprintBtn.Text = "Sprint: ON"
+	else
+		config.SprintBoost = original.SprintBoost
+		config.SprintTime = original.SprintTime
+		config.SprintCooldown = original.SprintCooldown
+		sprintBtn.Text = "Sprint: OFF"
+	end
+end)
+
+-- DASH TOGGLE
+dashBtn.MouseButton1Click:Connect(function()
+	dashEnabled = not dashEnabled
+	if dashEnabled then
+		dashDurationValue = tonumber(dashBox.Text) or dashDurationValue
+		config.DashActivatedTime = dashDurationValue
+		config.DashCooldown = 0
+		dashBtn.Text = "Dash: ON"
+	else
+		config.DashActivatedTime = original.DashTime
+		config.DashCooldown = original.DashCooldown
+		dashBtn.Text = "Dash: OFF"
+	end
+end)
+
+print("Admin sprint + dash UI loaded")
