@@ -1,0 +1,98 @@
+-- services
+local core_gui = game:GetService("CoreGui")
+local players = game:GetService("Players")
+local user_input_service = game:GetService("UserInputService")
+local run_service = game:GetService("RunService")
+
+-- config
+local target_health = 99999
+local loop_delay = 1 -- seconds
+local last_update = 0
+
+-- ui construction
+local screen_gui = Instance.new("ScreenGui")
+screen_gui.Name = "DeltaHealthGod"
+screen_gui.Parent = core_gui
+
+local main_frame = Instance.new("Frame")
+main_frame.Name = "MainFrame"
+main_frame.Size = UDim2.new(0, 160, 0, 50)
+main_frame.Position = UDim2.new(0.1, 0, 0.1, 0)
+main_frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+main_frame.BorderSizePixel = 0
+main_frame.Active = true
+main_frame.Draggable = true
+main_frame.Parent = screen_gui
+
+local ui_corner = Instance.new("UICorner")
+ui_corner.CornerRadius = UDim.new(0, 8)
+ui_corner.Parent = main_frame
+
+local toggle_btn = Instance.new("TextButton")
+toggle_btn.Name = "ToggleBtn"
+toggle_btn.Size = UDim2.new(1, -10, 1, -10)
+toggle_btn.Position = UDim2.new(0, 5, 0, 5)
+toggle_btn.BackgroundColor3 = Color3.fromRGB(200, 50, 50) -- red (off)
+toggle_btn.Text = "godmode: off"
+toggle_btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggle_btn.Font = Enum.Font.GothamBold
+toggle_btn.TextSize = 14
+toggle_btn.Parent = main_frame
+
+local btn_corner = Instance.new("UICorner")
+btn_corner.CornerRadius = UDim.new(0, 6)
+btn_corner.Parent = toggle_btn
+
+-- state
+local is_enabled = false
+local connection = nil
+
+-- logic function
+local function set_all_health()
+    for _, player in ipairs(players:GetPlayers()) do
+        if player.Character then
+            local humanoid = player.Character:FindFirstChild("Humanoid")
+            if humanoid then
+                -- attempt to set maxhealth first
+                humanoid.MaxHealth = target_health
+                humanoid.Health = target_health
+            end
+        end
+    end
+end
+
+-- toggle logic
+toggle_btn.MouseButton1Click:Connect(function()
+    is_enabled = not is_enabled
+    
+    if is_enabled then
+        toggle_btn.Text = "godmode: active"
+        toggle_btn.BackgroundColor3 = Color3.fromRGB(50, 200, 50) -- green
+        
+        -- start loop
+        connection = run_service.Heartbeat:Connect(function(dt)
+            last_update = last_update + dt
+            if last_update >= loop_delay then
+                set_all_health()
+                last_update = 0
+            end
+        end)
+    else
+        toggle_btn.Text = "godmode: off"
+        toggle_btn.BackgroundColor3 = Color3.fromRGB(200, 50, 50) -- red
+        
+        -- kill loop
+        if connection then
+            connection:Disconnect()
+            connection = nil
+        end
+    end
+end)
+
+-- cleanup
+user_input_service.InputBegan:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.RightControl then
+        if connection then connection:Disconnect() end
+        screen_gui:Destroy()
+    end
+end)
