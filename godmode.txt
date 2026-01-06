@@ -5,13 +5,14 @@ local user_input_service = game:GetService("UserInputService")
 local run_service = game:GetService("RunService")
 
 -- config
-local target_val = 99999
-local loop_delay = 1 -- seconds
+local god_val = 99999
+local normal_val = 10
+local loop_delay = 0.1 -- faster than 1s to prevent death between ticks
 local last_update = 0
 
 -- ui construction
 local screen_gui = Instance.new("ScreenGui")
-screen_gui.Name = "DeltaCustomHealth"
+screen_gui.Name = "ShieldGod"
 screen_gui.Parent = core_gui
 
 local main_frame = Instance.new("Frame")
@@ -33,7 +34,7 @@ toggle_btn.Name = "ToggleBtn"
 toggle_btn.Size = UDim2.new(1, -10, 1, -10)
 toggle_btn.Position = UDim2.new(0, 5, 0, 5)
 toggle_btn.BackgroundColor3 = Color3.fromRGB(200, 50, 50) -- red (off)
-toggle_btn.Text = "stat loop: off"
+toggle_btn.Text = "shield: normal"
 toggle_btn.TextColor3 = Color3.fromRGB(255, 255, 255)
 toggle_btn.Font = Enum.Font.GothamBold
 toggle_btn.TextSize = 14
@@ -48,22 +49,16 @@ local is_enabled = false
 local connection = nil
 
 -- logic function
-local function set_custom_stats()
-    for _, player in ipairs(players:GetPlayers()) do
-        -- look for the 'health' value object inside the player
-        local health_obj = player:FindFirstChild("health")
-        
-        if health_obj then
-            -- try to find maxHealth inside health
-            local max_health_obj = health_obj:FindFirstChild("maxHealth")
-            
-            -- update max health first so we don't get clamped
-            if max_health_obj then
-                max_health_obj.Value = target_val
-            end
-            
-            -- update current health
-            health_obj.Value = target_val
+local function update_shield(val)
+    local lp = players.LocalPlayer
+    if not lp then return end
+    
+    -- path: players.localplayer.health.shieldHealth
+    local health_folder = lp:FindFirstChild("health")
+    if health_folder then
+        local shield_val = health_folder:FindFirstChild("shieldHealth")
+        if shield_val then
+            shield_val.Value = val
         end
     end
 end
@@ -73,19 +68,22 @@ toggle_btn.MouseButton1Click:Connect(function()
     is_enabled = not is_enabled
     
     if is_enabled then
-        toggle_btn.Text = "stat loop: on"
+        toggle_btn.Text = "shield: god"
         toggle_btn.BackgroundColor3 = Color3.fromRGB(50, 200, 50) -- green
         
-        -- start loop
+        -- initial set
+        update_shield(god_val)
+        
+        -- start loop to fight back against game resetting it
         connection = run_service.Heartbeat:Connect(function(dt)
             last_update = last_update + dt
             if last_update >= loop_delay then
-                set_custom_stats()
+                update_shield(god_val)
                 last_update = 0
             end
         end)
     else
-        toggle_btn.Text = "stat loop: off"
+        toggle_btn.Text = "shield: normal"
         toggle_btn.BackgroundColor3 = Color3.fromRGB(200, 50, 50) -- red
         
         -- kill loop
@@ -93,6 +91,9 @@ toggle_btn.MouseButton1Click:Connect(function()
             connection:Disconnect()
             connection = nil
         end
+        
+        -- reset to normal value
+        update_shield(normal_val)
     end
 end)
 
