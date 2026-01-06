@@ -3,6 +3,7 @@ local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 
 
+
 --// FIND AbilityConfig MODULE
 local function findModule()
 	local rs = game:GetService("ReplicatedStorage")
@@ -25,15 +26,14 @@ local original = {
 	SprintBoost = config.SprintBoost,
 	SprintTime = config.SprintTime,
 	SprintCooldown = config.SprintCooldown,
-	DashCooldown = config.DashCooldown,
-	DashTime = config.DashActivatedTime
+	DashCooldown = config.DashCooldown
 }
 
 --// STATE
 local sprintEnabled = false
 local dashEnabled = false
 local sprintBoostValue = 7
-local dashDurationValue = 9999
+local sprintDurationValue = 5 -- ✅ DEFAULT = 5
 
 --// UI
 local gui = Instance.new("ScreenGui")
@@ -42,8 +42,8 @@ gui.ResetOnSpawn = false
 gui.Parent = player.PlayerGui
 
 local frame = Instance.new("Frame")
-frame.Size = UDim2.fromScale(0.25, 0.32)
-frame.Position = UDim2.fromScale(0.375, 0.34)
+frame.Size = UDim2.fromScale(0.25, 0.36)
+frame.Position = UDim2.fromScale(0.375, 0.32)
 frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
 frame.Active = true
 frame.Draggable = true
@@ -54,19 +54,20 @@ Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 12)
 -- TITLE
 local title = Instance.new("TextLabel")
 title.Text = "ADMIN ABILITIES"
-title.Size = UDim2.fromScale(1, 0.18)
+title.Size = UDim2.fromScale(1, 0.16)
 title.BackgroundTransparency = 1
 title.TextColor3 = Color3.new(1,1,1)
 title.Font = Enum.Font.GothamBold
 title.TextScaled = true
 title.Parent = frame
 
--- TEXTBOX CREATOR
-local function makeBox(text, pos)
+-- HELPERS
+local function makeBox(text, pos, placeholder)
 	local box = Instance.new("TextBox")
-	box.Size = UDim2.fromScale(0.8, 0.14)
+	box.Size = UDim2.fromScale(0.8, 0.12)
 	box.Position = pos
 	box.Text = text
+	box.PlaceholderText = placeholder
 	box.ClearTextOnFocus = false
 	box.Font = Enum.Font.Gotham
 	box.TextScaled = true
@@ -77,10 +78,9 @@ local function makeBox(text, pos)
 	return box
 end
 
--- BUTTON CREATOR
 local function makeButton(text, pos)
 	local b = Instance.new("TextButton")
-	b.Size = UDim2.fromScale(0.8, 0.14)
+	b.Size = UDim2.fromScale(0.8, 0.12)
 	b.Position = pos
 	b.Text = text
 	b.Font = Enum.Font.Gotham
@@ -92,41 +92,46 @@ local function makeButton(text, pos)
 	return b
 end
 
--- SPRINT UI
-local sprintBox = makeBox("7", UDim2.fromScale(0.1, 0.22))
-sprintBox.PlaceholderText = "Sprint Boost"
+-- UI ELEMENTS
+local sprintBoostBox = makeBox("7", UDim2.fromScale(0.1, 0.20), "Sprint Boost")
+local sprintTimeBox  = makeBox("5", UDim2.fromScale(0.1, 0.34), "Sprint Duration")
 
-local sprintBtn = makeButton("Sprint: OFF", UDim2.fromScale(0.1, 0.38))
+local sprintBtn = makeButton("Sprint: OFF", UDim2.fromScale(0.1, 0.50))
+local dashBtn   = makeButton("Dash: OFF",   UDim2.fromScale(0.1, 0.66))
 
--- DASH UI
-local dashBox = makeBox("9999", UDim2.fromScale(0.1, 0.56))
-dashBox.PlaceholderText = "Dash Duration"
-
-local dashBtn = makeButton("Dash: OFF", UDim2.fromScale(0.1, 0.72))
-
--- VALIDATION
-local function validateBox(box, current, min, max)
-	box.FocusLost:Connect(function()
-		local num = tonumber(box.Text)
-		if num then
-			current.value = math.clamp(num, min, max)
-			box.Text = tostring(current.value)
-		else
-			box.Text = tostring(current.value)
+-- LIVE SYNC
+sprintBoostBox.FocusLost:Connect(function()
+	local num = tonumber(sprintBoostBox.Text)
+	if num then
+		sprintBoostValue = math.clamp(num, 1, 50)
+		sprintBoostBox.Text = tostring(sprintBoostValue)
+		if sprintEnabled then
+			config.SprintBoost = sprintBoostValue
 		end
-	end)
-end
+	else
+		sprintBoostBox.Text = tostring(sprintBoostValue)
+	end
+end)
 
-validateBox(sprintBox, {value = sprintBoostValue}, 1, 50)
-validateBox(dashBox, {value = dashDurationValue}, 0.1, 9999)
+sprintTimeBox.FocusLost:Connect(function()
+	local num = tonumber(sprintTimeBox.Text)
+	if num then
+		sprintDurationValue = math.clamp(num, 0.5, 30)
+		sprintTimeBox.Text = tostring(sprintDurationValue)
+		if sprintEnabled then
+			config.SprintTime = sprintDurationValue
+		end
+	else
+		sprintTimeBox.Text = tostring(sprintDurationValue)
+	end
+end)
 
 -- SPRINT TOGGLE
 sprintBtn.MouseButton1Click:Connect(function()
 	sprintEnabled = not sprintEnabled
 	if sprintEnabled then
-		sprintBoostValue = tonumber(sprintBox.Text) or sprintBoostValue
 		config.SprintBoost = sprintBoostValue
-		config.SprintTime = 9999
+		config.SprintTime = sprintDurationValue
 		config.SprintCooldown = 0
 		sprintBtn.Text = "Sprint: ON"
 	else
@@ -137,19 +142,16 @@ sprintBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
--- DASH TOGGLE
+-- DASH TOGGLE (UNCHANGED)
 dashBtn.MouseButton1Click:Connect(function()
 	dashEnabled = not dashEnabled
 	if dashEnabled then
-		dashDurationValue = tonumber(dashBox.Text) or dashDurationValue
-		config.DashActivatedTime = dashDurationValue
 		config.DashCooldown = 0
 		dashBtn.Text = "Dash: ON"
 	else
-		config.DashActivatedTime = original.DashTime
 		config.DashCooldown = original.DashCooldown
 		dashBtn.Text = "Dash: OFF"
 	end
 end)
 
-print("Admin sprint + dash UI loaded")
+print("Admin sprint duration + boost synced correctly")
