@@ -77,19 +77,39 @@ local lastRun = 0
 -- Logic
 local function spamKill()
     local enemies = Players:GetPlayers()
-    -- Check if the Remote exists first to avoid errors
     local remote = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("ShootGun")
     
     if not remote then 
-        warn("Remote 'ShootGun' not found. Check path.")
+        warn("Remote 'ShootGun' not found.")
         return 
     end
 
+    local myChar = player.Character
+    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    
+    if not myRoot then return end -- You need to be alive to shoot
+
     for _, enemy in ipairs(enemies) do
-        if enemy ~= player and enemy.Character and enemy.Character:FindFirstChild("HumanoidRootPart") then
-            -- FIX: Removed empty commas. If the game needs args, put them here.
-            -- Using nil as placeholder. Adjust if game kicks you.
-            remote:FireServer(nil, nil, enemy.Character.HumanoidRootPart)
+        if enemy ~= player and enemy.Character then
+            -- We aim for the Head usually, but RootPart is fine too
+            local targetPart = enemy.Character:FindFirstChild("Head") or enemy.Character:FindFirstChild("HumanoidRootPart")
+            
+            if targetPart then
+                -- Arg 1: Origin (Your gun/head position). We'll use your root part position.
+                local origin = myRoot.Position
+                
+                -- Arg 2: The point we are aiming at (Their head position)
+                local targetPos = targetPart.Position
+                
+                -- Arg 3: The Instance we hit (The enemy's body part)
+                local hitInstance = targetPart
+                
+                -- Arg 4: The exact position on the part we hit (Same as targetPos usually)
+                local hitPosition = targetPos
+
+                -- Fire the remote with the correct signature
+                remote:FireServer(origin, targetPos, hitInstance, hitPosition)
+            end
         end
     end
 end
