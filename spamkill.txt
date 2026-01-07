@@ -1,11 +1,11 @@
 -- Services
 local Players = game:GetService("Players")
-local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
--- Player and Character
+-- Player
 local player = Players.LocalPlayer
 
 -- UI Construction
@@ -16,8 +16,8 @@ screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 180, 0, 60)
-mainFrame.Position = UDim2.new(0.05, 0, 0.5, -30)
+mainFrame.Size = UDim2.new(0, 180, 0, 95) -- Made taller for the input
+mainFrame.Position = UDim2.new(0.05, 0, 0.5, -45)
 mainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 mainFrame.BorderSizePixel = 0
 mainFrame.Active = true
@@ -31,7 +31,6 @@ uiCorner.Parent = mainFrame
 local titleLabel = Instance.new("TextLabel")
 titleLabel.Name = "TitleLabel"
 titleLabel.Size = UDim2.new(1, 0, 0, 25)
-titleLabel.Position = UDim2.new(0, 0, 0, 0)
 titleLabel.BackgroundTransparency = 1
 titleLabel.Text = "Spam Kill"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -39,11 +38,28 @@ titleLabel.Font = Enum.Font.GothamBold
 titleLabel.TextSize = 14
 titleLabel.Parent = mainFrame
 
+-- Delay Input
+local delayInput = Instance.new("TextBox")
+delayInput.Name = "DelayInput"
+delayInput.Size = UDim2.new(1, -10, 0, 25)
+delayInput.Position = UDim2.new(0, 5, 0, 30)
+delayInput.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+delayInput.Text = "0.1" -- Default delay
+delayInput.PlaceholderText = "Delay (seconds)"
+delayInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+delayInput.Font = Enum.Font.Gotham
+delayInput.TextSize = 13
+delayInput.Parent = mainFrame
+
+local inputCorner = Instance.new("UICorner")
+inputCorner.CornerRadius = UDim.new(0, 6)
+inputCorner.Parent = delayInput
+
 local toggleBtn = Instance.new("TextButton")
 toggleBtn.Name = "ToggleBtn"
 toggleBtn.Size = UDim2.new(1, -10, 0, 25)
-toggleBtn.Position = UDim2.new(0, 5, 0, 30)
-toggleBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50) -- Red (Off)
+toggleBtn.Position = UDim2.new(0, 5, 0, 60)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
 toggleBtn.Text = "SPAM KILL: OFF"
 toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 toggleBtn.Font = Enum.Font.Gotham
@@ -56,60 +72,55 @@ btnCorner.Parent = toggleBtn
 
 -- State
 local isEnabled = false
-local spamKillConnection = nil
+local lastRun = 0
 
--- Spam Kill Logic
+-- Logic
 local function spamKill()
     local enemies = Players:GetPlayers()
+    -- Check if the Remote exists first to avoid errors
+    local remote = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("ShootGun")
+    
+    if not remote then 
+        warn("Remote 'ShootGun' not found. Check path.")
+        return 
+    end
+
     for _, enemy in ipairs(enemies) do
         if enemy ~= player and enemy.Character and enemy.Character:FindFirstChild("HumanoidRootPart") then
-            game:GetService("ReplicatedStorage").Remotes.ShootGun:FireServer(, , enemy.Character.HumanoidRootPart)
+            -- FIX: Removed empty commas. If the game needs args, put them here.
+            -- Using nil as placeholder. Adjust if game kicks you.
+            remote:FireServer(nil, nil, enemy.Character.HumanoidRootPart)
         end
     end
 end
 
-local function startSpamKill()
-    if spamKillConnection then return end
-
-    spamKillConnection = RunService.Heartbeat:Connect(function()
-        if not isEnabled then
-            return -- Stop if disabled
-        end
-
+-- Loop
+RunService.Heartbeat:Connect(function()
+    if not isEnabled then return end
+    
+    local delayTime = tonumber(delayInput.Text) or 0.1
+    if tick() - lastRun >= delayTime then
+        lastRun = tick()
         spamKill()
-    end)
-end
-
-local function stopSpamKill()
-    if spamKillConnection then
-        spamKillConnection:Disconnect()
-        spamKillConnection = nil
     end
-end
+end)
 
 -- Toggle Logic
 toggleBtn.MouseButton1Click:Connect(function()
     isEnabled = not isEnabled
-
     if isEnabled then
         toggleBtn.Text = "SPAM KILL: ON"
-        toggleBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50) -- Green (On)
-        startSpamKill()
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
     else
         toggleBtn.Text = "SPAM KILL: OFF"
-        toggleBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50) -- Red (Off)
-        stopSpamKill()
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
     end
 end)
 
--- Cleanup (Press RightControl to close the UI)
+-- Cleanup
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if not gameProcessed and input.KeyCode == Enum.KeyCode.P then
-        stopSpamKill()
-        if screenGui then
-            screenGui:Destroy()
-        end
+        isEnabled = false
+        if screenGui then screenGui:Destroy() end
     end
 end)
-
-print("Spam Kill UI loaded. Press RightControl to close.")
