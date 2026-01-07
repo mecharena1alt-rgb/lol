@@ -44,7 +44,7 @@ delayInput.Name = "DelayInput"
 delayInput.Size = UDim2.new(1, -10, 0, 25)
 delayInput.Position = UDim2.new(0, 5, 0, 30)
 delayInput.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-delayInput.Text = "10" -- Default delay
+delayInput.Text = "0.001" -- Default delay
 delayInput.PlaceholderText = "Delay (seconds)"
 delayInput.TextColor3 = Color3.fromRGB(255, 255, 255)
 delayInput.Font = Enum.Font.Gotham
@@ -118,7 +118,7 @@ end
 RunService.Heartbeat:Connect(function()
     if not isEnabled then return end
     
-    local delayTime = tonumber(delayInput.Text) or 10
+    local delayTime = tonumber(delayInput.Text) or 0.001
     if tick() - lastRun >= delayTime then
         lastRun = tick()
         spamKill()
