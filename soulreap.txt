@@ -1,138 +1,100 @@
--- services
+--// SERVICES
+local players = game:GetService("Players")
 local replicated_storage = game:GetService("ReplicatedStorage")
 local user_input_service = game:GetService("UserInputService")
-local core_gui = game:GetService("CoreGui")
-local run_service = game:GetService("RunService")
+local player = players.LocalPlayer
 
--- path to config
-local ability_config_module = replicated_storage:WaitForChild("Ability"):WaitForChild("AbilityConfig")
+--// FIND MODULE (Targeting specific path you gave)
+local ability_folder = replicated_storage:WaitForChild("Ability")
+local config_script = ability_folder:WaitForChild("AbilityConfig")
+local config = require(config_script)
 
--- ui construction
-local screen_gui = Instance.new("ScreenGui")
-screen_gui.Name = "SoulModGUI"
-screen_gui.Parent = core_gui
-screen_gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
-local main_frame = Instance.new("Frame")
-main_frame.Name = "MainFrame"
-main_frame.Size = UDim2.new(0, 180, 0, 60)
-main_frame.Position = UDim2.new(0.05, 0, 0.5, -30)
-main_frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-main_frame.BorderSizePixel = 0
-main_frame.Active = true
-main_frame.Draggable = true
-main_frame.Parent = screen_gui
-
-local ui_corner = Instance.new("UICorner")
-ui_corner.CornerRadius = UDim.new(0, 8)
-ui_corner.Parent = main_frame
-
-local title_label = Instance.new("TextLabel")
-title_label.Name = "TitleLabel"
-title_label.Size = UDim2.new(1, 0, 0, 25)
-title_label.BackgroundTransparency = 1
-title_label.Text = "config modifier"
-title_label.TextColor3 = Color3.fromRGB(255, 255, 255)
-title_label.Font = Enum.Font.GothamBold
-title_label.TextSize = 14
-title_label.Parent = main_frame
-
-local toggle_btn = Instance.new("TextButton")
-toggle_btn.Name = "ToggleBtn"
-toggle_btn.Size = UDim2.new(1, -10, 0, 25)
-toggle_btn.Position = UDim2.new(0, 5, 0, 30)
-toggle_btn.BackgroundColor3 = Color3.fromRGB(200, 50, 50) -- red (off)
-toggle_btn.Text = "MODS: OFF"
-toggle_btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-toggle_btn.Font = Enum.Font.Gotham
-toggle_btn.TextSize = 13
-toggle_btn.Parent = main_frame
-
-local btn_corner = Instance.new("UICorner")
-btn_corner.CornerRadius = UDim.new(0, 6)
-btn_corner.Parent = toggle_btn
-
--- state
-local is_enabled = false
-local loop_connection = nil
-
--- store original values to be polite when turning it off
-local original_values = {
-    SoulLifetime = 4,
-    SoulReapTime = 3
+--// SAVE ORIGINAL VALUES
+local original = {
+    SoulLifetime = config.SoulLifetime,
+    SoulReapTime = config.SoulReapTime
 }
 
--- logic
-local function update_config(enable)
-    -- require the module to get the live table
-    local success, config_table = pcall(function()
-        return require(ability_config_module)
-    end)
+--// STATE
+local mods_enabled = false
 
-    if not success then
-        warn("failed to require config module. anti-cheat or path issue?")
-        return
-    end
+--// UI CONSTRUCTION
+local gui = Instance.new("ScreenGui")
+gui.Name = "SoulModUI"
+gui.ResetOnSpawn = false -- keeps gui alive after death
+gui.Parent = player:WaitForChild("PlayerGui")
 
-    if enable then
-        -- set to god mode values
-        config_table.SoulLifetime = 9999
-        config_table.SoulReapTime = 9999
-        print("values patched to 9999")
-    else
-        -- restore defaults
-        config_table.SoulLifetime = original_values.SoulLifetime
-        config_table.SoulReapTime = original_values.SoulReapTime
-        print("values restored")
-    end
-end
+local frame = Instance.new("Frame")
+frame.Size = UDim2.fromScale(0.25, 0.20) -- smaller since less buttons
+frame.Position = UDim2.fromScale(0.1, 0.1)
+frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+frame.Active = true
+frame.Draggable = true
+frame.Parent = gui
 
--- loop logic (some games reset modules, so we force it)
-local function start_loop()
-    if loop_connection then return end
+local ui_corner = Instance.new("UICorner")
+ui_corner.CornerRadius = UDim.new(0, 12)
+ui_corner.Parent = frame
+
+-- TITLE
+local title = Instance.new("TextLabel")
+title.Text = "SOUL MODIFIER"
+title.Size = UDim2.fromScale(1, 0.3)
+title.BackgroundTransparency = 1
+title.TextColor3 = Color3.new(1, 1, 1)
+title.Font = Enum.Font.GothamBold
+title.TextScaled = true
+title.Parent = frame
+
+-- BUTTON MAKER
+local function make_button(text, pos)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.fromScale(0.8, 0.4)
+    b.Position = pos
+    b.Text = text
+    b.Font = Enum.Font.Gotham
+    b.TextScaled = true
+    b.BackgroundColor3 = Color3.fromRGB(200, 50, 50) -- red default
+    b.TextColor3 = Color3.new(1, 1, 1)
     
-    update_config(true) -- run immediately
+    local b_corner = Instance.new("UICorner")
+    b_corner.CornerRadius = UDim.new(0, 8)
+    b_corner.Parent = b
     
-    -- keep forcing it just in case the game tries to change it back
-    loop_connection = run_service.Heartbeat:Connect(function()
-        if is_enabled then
-            local success, config_table = pcall(function() return require(ability_config_module) end)
-            if success then
-                if config_table.SoulLifetime ~= 9999 then config_table.SoulLifetime = 9999 end
-                if config_table.SoulReapTime ~= 9999 then config_table.SoulReapTime = 9999 end
-            end
-        end
-    end)
+    b.Parent = frame
+    return b
 end
 
-local function stop_loop()
-    if loop_connection then
-        loop_connection:Disconnect()
-        loop_connection = nil
-    end
-    update_config(false) -- revert values
-end
+local toggle_btn = make_button("Soul Mods: OFF", UDim2.fromScale(0.1, 0.45))
 
--- toggle logic
+--// LOGIC
 toggle_btn.MouseButton1Click:Connect(function()
-    is_enabled = not is_enabled
+    mods_enabled = not mods_enabled
     
-    if is_enabled then
-        toggle_btn.Text = "MODS: ON"
+    if mods_enabled then
+        -- set to 9999
+        config.SoulLifetime = 9999
+        config.SoulReapTime = 9999
+        
+        toggle_btn.Text = "Soul Mods: ON"
         toggle_btn.BackgroundColor3 = Color3.fromRGB(50, 200, 50) -- green
-        start_loop()
     else
-        toggle_btn.Text = "MODS: OFF"
+        -- restore originals
+        config.SoulLifetime = original.SoulLifetime
+        config.SoulReapTime = original.SoulReapTime
+        
+        toggle_btn.Text = "Soul Mods: OFF"
         toggle_btn.BackgroundColor3 = Color3.fromRGB(200, 50, 50) -- red
-        stop_loop()
     end
 end)
 
--- visibility toggle (press P)
+--// VISIBILITY TOGGLE (P KEY)
 user_input_service.InputBegan:Connect(function(input, game_processed)
-    if not game_processed and input.KeyCode == Enum.KeyCode.P then
-        main_frame.Visible = not main_frame.Visible
+    if game_processed then return end -- ignore if typing in chat
+    
+    if input.KeyCode == Enum.KeyCode.P then
+        frame.Visible = not frame.Visible
     end
 end)
 
-print("module modifier loaded. press P to toggle gui.")
+print("soul modifier loaded. press P to toggle gui.")
