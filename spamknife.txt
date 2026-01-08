@@ -64,7 +64,7 @@ count_input.Name = "CountInput"
 count_input.Size = UDim2.new(1, -10, 0, 25)
 count_input.Position = UDim2.new(0, 5, 0, 30)
 count_input.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-count_input.Text = "10" -- lowered default to prevent instant crash if logic is heavy
+count_input.Text = "100000" -- lowered default to prevent instant crash if logic is heavy
 count_input.PlaceholderText = "targets per press"
 count_input.TextColor3 = Color3.fromRGB(255, 255, 255)
 count_input.Font = Enum.Font.Gotham
@@ -100,7 +100,7 @@ toggle_btn.MouseButton1Click:Connect(function()
         toggle_btn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
     else
         toggle_btn.Text = "status: off"
-        toggle_btn.BackgroundColor3 = Color3.fromRGB(200, 200, 50)
+        toggle_btn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
     end
 end)
 
@@ -132,12 +132,12 @@ uis.InputBegan:Connect(function(input, gp)
         return
     end
 
-    if input.KeyCode == Enum.KeyCode.K and enabled then
+    if input.KeyCode == Enum.KeyCode.E and enabled then
         local char = plr.Character
         local root = char and char:FindFirstChild("HumanoidRootPart")
         if not root then return end
         
-        local max_targets = tonumber(count_input.Text) or 10
+        local max_targets = tonumber(count_input.Text) or 100000
         local enemies = get_targets(500) -- 500 stud range
         
         -- if no enemies, just spam random directions for visuals
