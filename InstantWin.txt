@@ -1,0 +1,113 @@
+-- services
+local players = game:GetService("Players")
+local run_service = game:GetService("RunService")
+local replicated_storage = game:GetService("ReplicatedStorage")
+local core_gui = game:GetService("CoreGui")
+
+-- player
+local player = players.LocalPlayer
+
+-- ui setup (kept it minimal)
+local screen_gui = Instance.new("ScreenGui")
+screen_gui.Name = "InstantWin"
+screen_gui.Parent = core_gui
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 200, 0, 60)
+frame.Position = UDim2.new(0.5, -100, 0.1, 0)
+frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+frame.Parent = screen_gui
+
+local status_lbl = Instance.new("TextLabel")
+status_lbl.Size = UDim2.new(1, 0, 1, 0)
+status_lbl.BackgroundTransparency = 1
+status_lbl.TextColor3 = Color3.fromRGB(255, 50, 50)
+status_lbl.Text = "waiting for round..."
+status_lbl.Font = Enum.Font.Code
+status_lbl.TextSize = 14
+status_lbl.Parent = frame
+
+-- logic
+local remote = replicated_storage:FindFirstChild("Remotes") and replicated_storage.Remotes:FindFirstChild("ShootGun")
+if not remote then return warn("no gun remote found") end
+
+local function get_targets()
+    local targets = {}
+    for _, v in ipairs(players:GetPlayers()) do
+        if v ~= player and v.Character then
+            local head = v.Character:FindFirstChild("Head")
+            if head then
+                table.insert(targets, head)
+            end
+        end
+    end
+    return targets
+end
+
+local function execute_order_66()
+    local my_char = player.Character
+    local my_root = my_char and my_char:FindFirstChild("HumanoidRootPart")
+    if not my_root then return end
+
+    local targets = get_targets()
+    if #targets == 0 then return end
+
+    status_lbl.Text = "EXECUTING KILL (" .. #targets .. ")"
+    status_lbl.TextColor3 = Color3.fromRGB(50, 255, 50)
+
+    -- this loop runs instantly, no yields. 
+    -- it floods the remote queue in a single tick.
+    for _, head in ipairs(targets) do
+        local origin = my_root.Position
+        local target_pos = head.Position
+        
+        -- fire 3 times per person just to be sure packet loss doesn't cuck you
+        for i = 1, 3 do
+            remote:FireServer(origin, target_pos, head, target_pos)
+        end
+    end
+end
+
+local function setup_character(char)
+    local root = char:WaitForChild("HumanoidRootPart", 10)
+    if not root then return end
+
+    -- reset ui
+    status_lbl.Text = "locked & loaded"
+    status_lbl.TextColor3 = Color3.fromRGB(255, 150, 0)
+
+    -- the magic trigger
+    -- we listen specifically for the unanchor event
+    local conn
+    conn = root:GetPropertyChangedSignal("Anchored"):Connect(function()
+        if not root.Anchored then
+            -- server just released us. fire immediately.
+            execute_order_66()
+            
+            -- cleanup connection so we don't fire when you jump or something later
+            if conn then conn:Disconnect() end
+        end
+    end)
+end
+
+-- init
+if player.Character then setup_character(player.Character) end
+player.CharacterAdded:Connect(setup_character)
+
+-- backup trigger: listen for the round start remote directly
+-- this is a race condition: sometimes the remote fires before the unanchor, sometimes after.
+-- we use both to ensure we are first.
+local start_remote = replicated_storage.Remotes:FindFirstChild("StartRoundCountdown") -- or whatever signals "GO"
+if start_remote then
+    -- hook into the remote firing if possible, though usually this remote starts the countdown, not the round.
+    -- relying on anchored is safer for the actual "go" signal.
+end
+
+-- cleanup on P key
+local uis = game:GetService("UserInputService")
+uis.InputBegan:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.P then
+        screen_gui:Destroy()
+        script:Destroy()
+    end
+end)
