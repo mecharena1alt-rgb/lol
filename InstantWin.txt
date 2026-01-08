@@ -1,113 +1,161 @@
--- services
-local players = game:GetService("Players")
-local run_service = game:GetService("RunService")
-local replicated_storage = game:GetService("ReplicatedStorage")
-local core_gui = game:GetService("CoreGui")
+-- Services
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
--- player
-local player = players.LocalPlayer
+-- Player
+local player = Players.LocalPlayer
 
--- ui setup (kept it minimal)
-local screen_gui = Instance.new("ScreenGui")
-screen_gui.Name = "InstantWin"
-screen_gui.Parent = core_gui
+-- UI Construction
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "SmartKillGui"
+screenGui.Parent = CoreGui
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
-local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 200, 0, 60)
-frame.Position = UDim2.new(0.5, -100, 0.1, 0)
-frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-frame.Parent = screen_gui
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 180, 0, 65) 
+mainFrame.Position = UDim2.new(0.05, 0, 0.5, -32)
+mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.Parent = screenGui
 
-local status_lbl = Instance.new("TextLabel")
-status_lbl.Size = UDim2.new(1, 0, 1, 0)
-status_lbl.BackgroundTransparency = 1
-status_lbl.TextColor3 = Color3.fromRGB(255, 50, 50)
-status_lbl.Text = "waiting for round..."
-status_lbl.Font = Enum.Font.Code
-status_lbl.TextSize = 14
-status_lbl.Parent = frame
+local uiCorner = Instance.new("UICorner")
+uiCorner.CornerRadius = UDim.new(0, 8)
+uiCorner.Parent = mainFrame
 
--- logic
-local remote = replicated_storage:FindFirstChild("Remotes") and replicated_storage.Remotes:FindFirstChild("ShootGun")
-if not remote then return warn("no gun remote found") end
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Name = "TitleLabel"
+titleLabel.Size = UDim2.new(1, 0, 0, 25)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "Round Start Sniper"
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.TextSize = 14
+titleLabel.Parent = mainFrame
 
-local function get_targets()
-    local targets = {}
-    for _, v in ipairs(players:GetPlayers()) do
-        if v ~= player and v.Character then
-            local head = v.Character:FindFirstChild("Head")
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Name = "ToggleBtn"
+toggleBtn.Size = UDim2.new(1, -10, 0, 30)
+toggleBtn.Position = UDim2.new(0, 5, 0, 30)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+toggleBtn.Text = "SNIPER: OFF"
+toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleBtn.Font = Enum.Font.Gotham
+toggleBtn.TextSize = 13
+toggleBtn.Parent = mainFrame
+
+local btnCorner = Instance.new("UICorner")
+btnCorner.CornerRadius = UDim.new(0, 6)
+btnCorner.Parent = toggleBtn
+
+-- State
+local isEnabled = false
+local connection = nil -- Stores the Anchor listener
+
+-- Logic
+local function getRemote()
+    return ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("ShootGun")
+end
+
+local function executeKill()
+    if not isEnabled then return end
+    
+    local remote = getRemote()
+    if not remote then return end
+
+    local myChar = player.Character
+    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    
+    if not myRoot then return end
+
+    local enemies = Players:GetPlayers()
+    local killCount = 0
+
+    for _, enemy in ipairs(enemies) do
+        if enemy ~= player and enemy.Character then
+            local head = enemy.Character:FindFirstChild("Head")
+            
             if head then
-                table.insert(targets, head)
+                local origin = myRoot.Position
+                local targetPos = head.Position
+                
+                -- Triple tap to ensure packet delivery
+                for i = 1, 3 do
+                    remote:FireServer(origin, targetPos, head, targetPos)
+                end
+                killCount = killCount + 1
             end
         end
     end
-    return targets
-end
-
-local function execute_order_66()
-    local my_char = player.Character
-    local my_root = my_char and my_char:FindFirstChild("HumanoidRootPart")
-    if not my_root then return end
-
-    local targets = get_targets()
-    if #targets == 0 then return end
-
-    status_lbl.Text = "EXECUTING KILL (" .. #targets .. ")"
-    status_lbl.TextColor3 = Color3.fromRGB(50, 255, 50)
-
-    -- this loop runs instantly, no yields. 
-    -- it floods the remote queue in a single tick.
-    for _, head in ipairs(targets) do
-        local origin = my_root.Position
-        local target_pos = head.Position
-        
-        -- fire 3 times per person just to be sure packet loss doesn't cuck you
-        for i = 1, 3 do
-            remote:FireServer(origin, target_pos, head, target_pos)
-        end
+    
+    if killCount > 0 then
+        toggleBtn.Text = "KILLED " .. killCount .. " PLAYERS"
+        task.delay(2, function()
+            if isEnabled then
+                toggleBtn.Text = "SNIPER: READY"
+            else
+                toggleBtn.Text = "SNIPER: OFF"
+            end
+        end)
     end
 end
 
-local function setup_character(char)
+local function setupCharacter(char)
+    -- Clean up old connection if it exists
+    if connection then 
+        connection:Disconnect() 
+        connection = nil
+    end
+
     local root = char:WaitForChild("HumanoidRootPart", 10)
     if not root then return end
 
-    -- reset ui
-    status_lbl.Text = "locked & loaded"
-    status_lbl.TextColor3 = Color3.fromRGB(255, 150, 0)
+    -- Reset text if enabled
+    if isEnabled then
+        toggleBtn.Text = "SNIPER: READY"
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+    end
 
-    -- the magic trigger
-    -- we listen specifically for the unanchor event
-    local conn
-    conn = root:GetPropertyChangedSignal("Anchored"):Connect(function()
-        if not root.Anchored then
-            -- server just released us. fire immediately.
-            execute_order_66()
-            
-            -- cleanup connection so we don't fire when you jump or something later
-            if conn then conn:Disconnect() end
+    -- Listen for the un-anchor event (Round Start)
+    connection = root:GetPropertyChangedSignal("Anchored"):Connect(function()
+        -- Only fire if we just got unanchored AND the script is on
+        if not root.Anchored and isEnabled then
+            executeKill()
         end
     end)
 end
 
--- init
-if player.Character then setup_character(player.Character) end
-player.CharacterAdded:Connect(setup_character)
-
--- backup trigger: listen for the round start remote directly
--- this is a race condition: sometimes the remote fires before the unanchor, sometimes after.
--- we use both to ensure we are first.
-local start_remote = replicated_storage.Remotes:FindFirstChild("StartRoundCountdown") -- or whatever signals "GO"
-if start_remote then
-    -- hook into the remote firing if possible, though usually this remote starts the countdown, not the round.
-    -- relying on anchored is safer for the actual "go" signal.
+-- Init Listeners
+if player.Character then 
+    setupCharacter(player.Character) 
 end
 
--- cleanup on P key
-local uis = game:GetService("UserInputService")
-uis.InputBegan:Connect(function(input)
-    if input.KeyCode == Enum.KeyCode.P then
-        screen_gui:Destroy()
-        script:Destroy()
+player.CharacterAdded:Connect(setupCharacter)
+
+-- Toggle Logic
+toggleBtn.MouseButton1Click:Connect(function()
+    isEnabled = not isEnabled
+    if isEnabled then
+        toggleBtn.Text = "SNIPER: READY"
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+        -- If we toggle it on mid-round and we aren't anchored, maybe you want to kill immediately?
+        -- Uncomment next line if you want immediate kill when toggling ON during a live round:
+        -- if player.Character and player.Character:FindFirstChild("HumanoidRootPart") and not player.Character.HumanoidRootPart.Anchored then executeKill() end
+    else
+        toggleBtn.Text = "SNIPER: OFF"
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    end
+end)
+
+-- Cleanup
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == Enum.KeyCode.P then
+        isEnabled = false
+        if connection then connection:Disconnect() end
+        if screenGui then screenGui:Destroy() end
     end
 end)
