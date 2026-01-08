@@ -9,7 +9,7 @@ local CoreGui = game:GetService("CoreGui")
 local player = Players.LocalPlayer
 
 -- Config
-local weaponName = "Sugar Cookie" -- Change this to your desired weapon name
+local weaponName = "Haze" -- Change this to your desired weapon name
 
 -- UI Construction
 local screenGui = Instance.new("ScreenGui")
