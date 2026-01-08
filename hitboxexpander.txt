@@ -1,0 +1,168 @@
+-- services
+local players = game:GetService("Players")
+local runService = game:GetService("RunService")
+local userInputService = game:GetService("UserInputService")
+local coreGui = game:GetService("CoreGui")
+
+-- player
+local player = players.LocalPlayer
+
+-- ui construction
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "HitboxExpanderGui"
+screenGui.Parent = coreGui
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 180, 0, 130)
+mainFrame.Position = UDim2.new(0.05, 0, 0.5, -65)
+mainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.Parent = screenGui
+
+local uiCorner = Instance.new("UICorner")
+uiCorner.CornerRadius = UDim.new(0, 8)
+uiCorner.Parent = mainFrame
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Name = "TitleLabel"
+titleLabel.Size = UDim2.new(1, 0, 0, 25)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "thiccboxes v2"
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.TextSize = 14
+titleLabel.Parent = mainFrame
+
+-- size input
+local sizeInput = Instance.new("TextBox")
+sizeInput.Name = "SizeInput"
+sizeInput.Size = UDim2.new(1, -10, 0, 25)
+sizeInput.Position = UDim2.new(0, 5, 0, 30)
+sizeInput.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+sizeInput.Text = "5"
+sizeInput.PlaceholderText = "size (e.g. 3.3)"
+sizeInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+sizeInput.Font = Enum.Font.Gotham
+sizeInput.TextSize = 13
+sizeInput.Parent = mainFrame
+
+local inputCorner = Instance.new("UICorner")
+inputCorner.CornerRadius = UDim.new(0, 6)
+inputCorner.Parent = sizeInput
+
+-- toggle button
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Name = "ToggleBtn"
+toggleBtn.Size = UDim2.new(1, -10, 0, 25)
+toggleBtn.Position = UDim2.new(0, 5, 0, 65)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+toggleBtn.Text = "EXPANDER: OFF"
+toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleBtn.Font = Enum.Font.Gotham
+toggleBtn.TextSize = 13
+toggleBtn.Parent = mainFrame
+
+local btnCorner = Instance.new("UICorner")
+btnCorner.CornerRadius = UDim.new(0, 6)
+btnCorner.Parent = toggleBtn
+
+-- state
+local isEnabled = false
+
+-- logic
+local function getVectorSize(inputStr)
+    -- tonumber handles decimals automatically (e.g. "3.3" becomes 3.3)
+    local num = tonumber(inputStr)
+    if num then
+        return Vector3.new(num, num, num)
+    end
+    return Vector3.new(5, 5, 5) -- fallback
+end
+
+local function addOutline(part)
+    if not part:FindFirstChild("ESPBox") then
+        local box = Instance.new("BoxHandleAdornment")
+        box.Name = "ESPBox"
+        box.Adornee = part
+        box.AlwaysOnTop = true -- this is the x-ray magic
+        box.ZIndex = 5
+        box.Size = part.Size
+        box.Transparency = 0.5
+        box.Color3 = Color3.fromRGB(200, 200, 200) -- whitish grey
+        box.Parent = part
+    else
+        -- update size if it changes
+        part.ESPBox.Size = part.Size
+    end
+end
+
+local function removeOutline(part)
+    if part:FindFirstChild("ESPBox") then
+        part.ESPBox:Destroy()
+    end
+end
+
+local function expandHitboxes()
+    for _, obj in pairs(workspace:GetDescendants()) do
+        -- looking for HumanoidRootPart
+        if obj.Name == "HumanoidRootPart" and obj.Parent:FindFirstChild("Humanoid") then
+            local char = obj.Parent
+            
+            if char.Name ~= player.Name then
+                -- Target specifically the "Part" inside HRP, fallback to HRP if missing
+                local target = obj:FindFirstChild("Part") or obj
+                
+                target.Size = getVectorSize(sizeInput.Text)
+                target.CanCollide = false
+                -- We do NOT change transparency, we add the outline instead
+                addOutline(target)
+            end
+        end
+    end
+end
+
+local function resetHitboxes()
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj.Name == "HumanoidRootPart" and obj.Parent:FindFirstChild("Humanoid") then
+             local char = obj.Parent
+             if char.Name ~= player.Name then
+                local target = obj:FindFirstChild("Part") or obj
+                -- standard size reset. if the game uses custom sizes this might look weird but it works
+                target.Size = Vector3.new(1, 1, 1) 
+                removeOutline(target)
+             end
+        end
+    end
+end
+
+-- loop
+runService.RenderStepped:Connect(function()
+    if isEnabled then
+        expandHitboxes()
+    end
+end)
+
+-- toggle logic
+toggleBtn.MouseButton1Click:Connect(function()
+    isEnabled = not isEnabled
+    if isEnabled then
+        toggleBtn.Text = "EXPANDER: ON"
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+    else
+        toggleBtn.Text = "EXPANDER: OFF"
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+        resetHitboxes()
+    end
+end)
+
+-- cleanup
+userInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == Enum.KeyCode.P then
+        isEnabled = false
+        if screenGui then screenGui:Destroy() end
+    end
+end)
