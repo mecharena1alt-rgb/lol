@@ -1,0 +1,149 @@
+-- services
+local players = game:GetService("Players")
+local uis = game:GetService("UserInputService")
+local coregui = game:GetService("CoreGui")
+local rep = game:GetService("ReplicatedStorage")
+local run = game:GetService("RunService")
+
+-- vars
+local plr = players.LocalPlayer
+local remotes = rep:WaitForChild("Remotes")
+local throw_remote = remotes:WaitForChild("ThrowStart")
+local render_remote = remotes:WaitForChild("RenderKnifeProjectile")
+
+-- anti-lag / render blocker
+-- this uses getconnections to find the game's render listener and disable it
+-- if your executor sucks, it falls back to just nuking the projectiles folder locally
+task.spawn(function()
+    local success, err = pcall(function()
+        for _, conn in pairs(getconnections(render_remote.OnClientEvent)) do
+            conn:Disable()
+        end
+    end)
+    
+    if not success then
+        -- fallback for trash executors: nuke the physical parts
+        local proj_folder = workspace:WaitForChild("KnifeProjectiles", 5)
+        if proj_folder then
+            run.RenderStepped:Connect(function()
+                proj_folder:ClearAllChildren()
+            end)
+        end
+    end
+end)
+
+-- ui construction (based on your ref)
+local screen_gui = Instance.new("ScreenGui")
+screen_gui.Name = "KnifeAuraGui"
+screen_gui.Parent = coregui
+screen_gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local main_frame = Instance.new("Frame")
+main_frame.Name = "MainFrame"
+main_frame.Size = UDim2.new(0, 180, 0, 95)
+main_frame.Position = UDim2.new(0.05, 0, 0.5, -45)
+main_frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+main_frame.BorderSizePixel = 0
+main_frame.Active = true
+main_frame.Draggable = true
+main_frame.Parent = screen_gui
+
+local ui_corner = Instance.new("UICorner")
+ui_corner.CornerRadius = UDim.new(0, 8)
+ui_corner.Parent = main_frame
+
+local title = Instance.new("TextLabel")
+title.Name = "Title"
+title.Size = UDim2.new(1, 0, 0, 25)
+title.BackgroundTransparency = 1
+title.Text = "knife aura"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 14
+title.Parent = main_frame
+
+-- count input
+local count_input = Instance.new("TextBox")
+count_input.Name = "CountInput"
+count_input.Size = UDim2.new(1, -10, 0, 25)
+count_input.Position = UDim2.new(0, 5, 0, 30)
+count_input.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+count_input.Text = "50" -- default amount
+count_input.PlaceholderText = "knives per press"
+count_input.TextColor3 = Color3.fromRGB(255, 255, 255)
+count_input.Font = Enum.Font.Gotham
+count_input.TextSize = 13
+count_input.Parent = main_frame
+
+local input_corner = Instance.new("UICorner")
+input_corner.CornerRadius = UDim.new(0, 6)
+input_corner.Parent = count_input
+
+-- toggle btn
+local toggle_btn = Instance.new("TextButton")
+toggle_btn.Name = "ToggleBtn"
+toggle_btn.Size = UDim2.new(1, -10, 0, 25)
+toggle_btn.Position = UDim2.new(0, 5, 0, 60)
+toggle_btn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+toggle_btn.Text = "status: off"
+toggle_btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggle_btn.Font = Enum.Font.Gotham
+toggle_btn.TextSize = 13
+toggle_btn.Parent = main_frame
+
+local btn_corner = Instance.new("UICorner")
+btn_corner.CornerRadius = UDim.new(0, 6)
+btn_corner.Parent = toggle_btn
+
+-- logic
+local enabled = false
+
+toggle_btn.MouseButton1Click:Connect(function()
+    enabled = not enabled
+    if enabled then
+        toggle_btn.Text = "status: on"
+        toggle_btn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+    else
+        toggle_btn.Text = "status: off"
+        toggle_btn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    end
+end)
+
+local function get_random_dir()
+    -- generates a random unit vector on a sphere
+    local x = (math.random() - 0.5) * 2
+    local y = (math.random() - 0.5) * 2
+    local z = (math.random() - 0.5) * 2
+    return Vector3.new(x, y, z).Unit
+end
+
+uis.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    
+    -- close gui
+    if input.KeyCode == Enum.KeyCode.P then
+        enabled = false
+        screen_gui:Destroy()
+        return
+    end
+
+    -- throw logic
+    if input.KeyCode == Enum.KeyCode.E and enabled then
+        local char = plr.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        
+        if not root then return end
+        
+        local amount = tonumber(count_input.Text) or 50
+        
+        -- spam loop
+        for i = 1, amount do
+            local origin = root.Position
+            local direction = get_random_dir()
+            
+            -- fire remote
+            -- arg1: origin, arg2: direction unit
+            throw_remote:FireServer(origin, direction)
+        end
+    end
+end)
