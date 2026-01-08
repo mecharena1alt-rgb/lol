@@ -1,16 +1,28 @@
 -- services
-local players = game:GetService("Players")
-local runService = game:GetService("RunService")
-local userInputService = game:GetService("UserInputService")
-local coreGui = game:GetService("CoreGui")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- game specific modules
+-- WE WRAP THIS IN PCALL JUST IN CASE THE GAME UPDATES AND BREAKS THE PATH
+local MatchService
+local success, err = pcall(function()
+    MatchService = require(ReplicatedStorage.Match.MatchService)
+end)
+
+if not success then
+    warn("Failed to load MatchService. Enemy check might fail: " .. err)
+end
 
 -- player
-local player = players.LocalPlayer
+local LocalPlayer = Players.LocalPlayer
 
 -- ui construction
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "HitboxExpanderGui"
-screenGui.Parent = coreGui
+screenGui.Parent = CoreGui
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
 local mainFrame = Instance.new("Frame")
@@ -31,7 +43,7 @@ local titleLabel = Instance.new("TextLabel")
 titleLabel.Name = "TitleLabel"
 titleLabel.Size = UDim2.new(1, 0, 0, 25)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "thiccboxes v2"
+titleLabel.Text = "enemy thiccboxes v2"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 titleLabel.Font = Enum.Font.GothamBold
 titleLabel.TextSize = 14
@@ -72,15 +84,42 @@ btnCorner.Parent = toggleBtn
 
 -- state
 local isEnabled = false
+local currentMatchData = nil
 
--- logic
+-- ENEMY LOGIC ---------------------------------------------------------
+local function isEnemy(playerToCheck)
+    -- If MatchService failed or no data, fallback to "everyone is enemy" (safer for testing)
+    -- or return false if you want strict safety.
+    if not currentMatchData then return true end
+    
+    -- Don't target self
+    if playerToCheck == LocalPlayer then return false end
+
+    local myData = currentMatchData[LocalPlayer]
+    local enemyData = currentMatchData[playerToCheck]
+
+    -- If we can't find team data, ignore them
+    if not myData or not enemyData then return false end
+
+    -- The actual check: are teams different?
+    return enemyData.Team ~= myData.Team
+end
+
+-- Hook up the signal to get match data
+if MatchService then
+    MatchService.GetClientMatchStartedSignal():Connect(function(_, matchData)
+        currentMatchData = matchData
+        print("Match started, enemy data updated.")
+    end)
+end
+------------------------------------------------------------------------
+
 local function getVectorSize(inputStr)
-    -- tonumber handles decimals automatically (e.g. "3.3" becomes 3.3)
     local num = tonumber(inputStr)
     if num then
         return Vector3.new(num, num, num)
     end
-    return Vector3.new(5, 5, 5) -- fallback
+    return Vector3.new(5, 5, 5) 
 end
 
 local function addOutline(part)
@@ -88,14 +127,13 @@ local function addOutline(part)
         local box = Instance.new("BoxHandleAdornment")
         box.Name = "ESPBox"
         box.Adornee = part
-        box.AlwaysOnTop = true -- this is the x-ray magic
+        box.AlwaysOnTop = true 
         box.ZIndex = 5
         box.Size = part.Size
         box.Transparency = 0.5
-        box.Color3 = Color3.fromRGB(200, 200, 200) -- whitish grey
+        box.Color3 = Color3.fromRGB(255, 50, 50) -- Red for enemies
         box.Parent = part
     else
-        -- update size if it changes
         part.ESPBox.Size = part.Size
     end
 end
@@ -107,18 +145,19 @@ local function removeOutline(part)
 end
 
 local function expandHitboxes()
-    for _, obj in pairs(workspace:GetDescendants()) do
-        -- looking for HumanoidRootPart
-        if obj.Name == "HumanoidRootPart" and obj.Parent:FindFirstChild("Humanoid") then
-            local char = obj.Parent
-            
-            if char.Name ~= player.Name then
-                -- Target specifically the "Part" inside HRP, fallback to HRP if missing
-                local target = obj:FindFirstChild("Part") or obj
+    for _, player in pairs(Players:GetPlayers()) do
+        -- ONLY run on enemies
+        if isEnemy(player) and player.Character then
+            local char = player.Character
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            local hum = char:FindFirstChild("Humanoid")
+
+            if hrp and hum and hum.Health > 0 then
+                -- Target specifically the "Part" inside HRP, fallback to HRP
+                local target = hrp:FindFirstChild("Part") or hrp
                 
                 target.Size = getVectorSize(sizeInput.Text)
                 target.CanCollide = false
-                -- We do NOT change transparency, we add the outline instead
                 addOutline(target)
             end
         end
@@ -126,21 +165,22 @@ local function expandHitboxes()
 end
 
 local function resetHitboxes()
-    for _, obj in pairs(workspace:GetDescendants()) do
-        if obj.Name == "HumanoidRootPart" and obj.Parent:FindFirstChild("Humanoid") then
-             local char = obj.Parent
-             if char.Name ~= player.Name then
-                local target = obj:FindFirstChild("Part") or obj
-                -- standard size reset. if the game uses custom sizes this might look weird but it works
-                target.Size = Vector3.new(1, 1, 1) 
+    for _, player in pairs(Players:GetPlayers()) do
+        if player.Character then
+            local char = player.Character
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            
+            if hrp then
+                local target = hrp:FindFirstChild("Part") or hrp
+                target.Size = Vector3.new(1, 1, 1) -- Standard reset
                 removeOutline(target)
-             end
+            end
         end
     end
 end
 
 -- loop
-runService.RenderStepped:Connect(function()
+RunService.RenderStepped:Connect(function()
     if isEnabled then
         expandHitboxes()
     end
@@ -160,7 +200,7 @@ toggleBtn.MouseButton1Click:Connect(function()
 end)
 
 -- cleanup
-userInputService.InputBegan:Connect(function(input, gameProcessed)
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if not gameProcessed and input.KeyCode == Enum.KeyCode.P then
         isEnabled = false
         if screenGui then screenGui:Destroy() end
