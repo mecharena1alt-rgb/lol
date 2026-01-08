@@ -128,7 +128,7 @@ uis.InputBegan:Connect(function(input, gp)
     end
 
     -- throw logic
-    if input.KeyCode == Enum.KeyCode.E and enabled then
+    if input.KeyCode == Enum.KeyCode.K and enabled then
         local char = plr.Character
         local root = char and char:FindFirstChild("HumanoidRootPart")
         
