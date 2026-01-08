@@ -8,21 +8,18 @@ local run = game:GetService("RunService")
 -- vars
 local plr = players.LocalPlayer
 local remotes = rep:WaitForChild("Remotes")
-local throw_remote = remotes:WaitForChild("ThrowStart")
+local throw_start = remotes:WaitForChild("ThrowStart")
+local throw_hit = remotes:WaitForChild("ThrowHit") -- we need this to actually kill
 local render_remote = remotes:WaitForChild("RenderKnifeProjectile")
 
 -- anti-lag / render blocker
--- this uses getconnections to find the game's render listener and disable it
--- if your executor sucks, it falls back to just nuking the projectiles folder locally
 task.spawn(function()
     local success, err = pcall(function()
         for _, conn in pairs(getconnections(render_remote.OnClientEvent)) do
             conn:Disable()
         end
     end)
-    
     if not success then
-        -- fallback for trash executors: nuke the physical parts
         local proj_folder = workspace:WaitForChild("KnifeProjectiles", 5)
         if proj_folder then
             run.RenderStepped:Connect(function()
@@ -32,9 +29,9 @@ task.spawn(function()
     end
 end)
 
--- ui construction (based on your ref)
+-- ui construction
 local screen_gui = Instance.new("ScreenGui")
-screen_gui.Name = "KnifeAuraGui"
+screen_gui.Name = "KnifeAuraGui_V2"
 screen_gui.Parent = coregui
 screen_gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
@@ -56,20 +53,19 @@ local title = Instance.new("TextLabel")
 title.Name = "Title"
 title.Size = UDim2.new(1, 0, 0, 25)
 title.BackgroundTransparency = 1
-title.Text = "knife aura"
+title.Text = "knife aura v2"
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 14
 title.Parent = main_frame
 
--- count input
 local count_input = Instance.new("TextBox")
 count_input.Name = "CountInput"
 count_input.Size = UDim2.new(1, -10, 0, 25)
 count_input.Position = UDim2.new(0, 5, 0, 30)
 count_input.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-count_input.Text = "50" -- default amount
-count_input.PlaceholderText = "knives per press"
+count_input.Text = "10" -- lowered default to prevent instant crash if logic is heavy
+count_input.PlaceholderText = "targets per press"
 count_input.TextColor3 = Color3.fromRGB(255, 255, 255)
 count_input.Font = Enum.Font.Gotham
 count_input.TextSize = 13
@@ -79,7 +75,6 @@ local input_corner = Instance.new("UICorner")
 input_corner.CornerRadius = UDim.new(0, 6)
 input_corner.Parent = count_input
 
--- toggle btn
 local toggle_btn = Instance.new("TextButton")
 toggle_btn.Name = "ToggleBtn"
 toggle_btn.Size = UDim2.new(1, -10, 0, 25)
@@ -105,45 +100,76 @@ toggle_btn.MouseButton1Click:Connect(function()
         toggle_btn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
     else
         toggle_btn.Text = "status: off"
-        toggle_btn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+        toggle_btn.BackgroundColor3 = Color3.fromRGB(200, 200, 50)
     end
 end)
 
-local function get_random_dir()
-    -- generates a random unit vector on a sphere
-    local x = (math.random() - 0.5) * 2
-    local y = (math.random() - 0.5) * 2
-    local z = (math.random() - 0.5) * 2
-    return Vector3.new(x, y, z).Unit
+-- helper to find enemies
+local function get_targets(radius)
+    local targets = {}
+    local my_char = plr.Character
+    local my_root = my_char and my_char:FindFirstChild("HumanoidRootPart")
+    if not my_root then return targets end
+
+    for _, v in pairs(players:GetPlayers()) do
+        if v ~= plr and v.Character and v.Character:FindFirstChild("HumanoidRootPart") and v.Character:FindFirstChild("Humanoid") then
+            local enemy_root = v.Character.HumanoidRootPart
+            local dist = (enemy_root.Position - my_root.Position).Magnitude
+            if dist <= radius and v.Character.Humanoid.Health > 0 then
+                table.insert(targets, v.Character)
+            end
+        end
+    end
+    return targets
 end
 
 uis.InputBegan:Connect(function(input, gp)
     if gp then return end
     
-    -- close gui
     if input.KeyCode == Enum.KeyCode.P then
         enabled = false
         screen_gui:Destroy()
         return
     end
 
-    -- throw logic
     if input.KeyCode == Enum.KeyCode.K and enabled then
         local char = plr.Character
         local root = char and char:FindFirstChild("HumanoidRootPart")
-        
         if not root then return end
         
-        local amount = tonumber(count_input.Text) or 50
+        local max_targets = tonumber(count_input.Text) or 10
+        local enemies = get_targets(500) -- 500 stud range
         
-        -- spam loop
-        for i = 1, amount do
-            local origin = root.Position
-            local direction = get_random_dir()
-            
-            -- fire remote
-            -- arg1: origin, arg2: direction unit
-            throw_remote:FireServer(origin, direction)
+        -- if no enemies, just spam random directions for visuals
+        if #enemies == 0 then
+             for i = 1, max_targets do
+                local r_dir = Vector3.new(math.random()-0.5, math.random()-0.5, math.random()-0.5).Unit
+                throw_start:FireServer(root.Position, r_dir)
+             end
+             return
+        end
+
+        -- if enemies exist, murder them
+        for i = 1, max_targets do
+            local target_char = enemies[math.random(1, #enemies)]
+            if target_char then
+                local t_root = target_char:FindFirstChild("HumanoidRootPart")
+                local t_head = target_char:FindFirstChild("Head")
+                local hit_part = t_head or t_root -- prefer headshots
+                
+                if hit_part and t_root then
+                    local origin = root.Position
+                    local target_pos = hit_part.Position
+                    local direction = (target_pos - origin).Unit
+
+                    -- 1. fire the visual throw
+                    throw_start:FireServer(origin, direction)
+
+                    -- 2. fire the hit event immediately
+                    -- args based on your log: hit instance, hit position
+                    throw_hit:FireServer(hit_part, target_pos)
+                end
+            end
         end
     end
 end)
