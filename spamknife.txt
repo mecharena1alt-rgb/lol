@@ -8,7 +8,7 @@ local run = game:GetService("RunService")
 -- vars
 local plr = players.LocalPlayer
 local remotes = rep:WaitForChild("Remotes")
-local throw_start = remotes:WaitForChild("ThrowStart")
+local throw_start = remotes:WaitForChild("ActivateShroud")
 local throw_hit = remotes:WaitForChild("ThrowHit") -- we need this to actually kill
 local render_remote = remotes:WaitForChild("RenderKnifeProjectile")
 
